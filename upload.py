@@ -1,7 +1,8 @@
 import tkinter as tk
+from tkinter import ttk
 from tkinter import filedialog
 import customtkinter as ctk
-from PIL import Image
+from PIL import Image, ImageTk, ImageDraw
 from itertools import cycle
 
 # Initialize customtkinter
@@ -9,10 +10,36 @@ ctk.set_appearance_mode("white")
 ctk.set_default_color_theme("blue")
 
 # Set initial window size
-WIDTH, HEIGHT = 1366, 768
+WIDTH, HEIGHT = 1200, 720
 
 # Keep track of all open top-level windows
 open_windows = []
+
+active_windows = {}
+
+def close_all_windows(except_window=None):
+    """Hide all windows except the specified one."""
+    for name, window in active_windows.items():
+        if window != except_window and window.winfo_exists():
+            window.withdraw()
+
+
+def insert_circular_image(canvas, image_path):
+    # Open and resize the image
+    image = Image.open(image_path).resize((300, 300), Image.LANCZOS)
+    
+    # Create a circular mask
+    mask = Image.new("L", (300, 300), 0)
+    draw = ImageDraw.Draw(mask)
+    draw.ellipse((0, 0, 300, 300), fill=255)
+    
+    # Create a transparent image
+    circular_image = Image.new("RGBA", (300, 300), (0, 0, 0, 0))
+    circular_image.paste(image, (0, 0), mask)
+
+    # Convert to ImageTk for displaying in canvas
+    canvas.image = ImageTk.PhotoImage(circular_image)
+    canvas.create_image(150, 150, image=canvas.image)
 
 # Function to close all open top-level windows and return to main window
 def go_home():
@@ -22,6 +49,182 @@ def go_home():
     open_windows.clear()
     tk_root.deiconify()
     tk_root.focus_set()
+
+def create_navigation_bar(parent, parent_window):
+    header_frame = ctk.CTkFrame(parent, height=70, fg_color="#0f0f0f")
+    header_frame.pack(side="top", fill="x", pady=0)
+
+
+    logo_label = ctk.CTkLabel(header_frame, text="EleVista", font=("Poppins", 30), fg_color="transparent", text_color="white")
+    logo_label.pack(side="left", padx=(30, 30))  # Adjust the first value to move it to the right
+
+
+    # Navigation Buttons
+    nav_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
+    nav_frame.pack(side="right", padx=20, pady=15)
+
+    nav_buttons = ["home", "surveys", "manual", "about us"]
+    for text in nav_buttons:
+        if text == "home":
+            btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
+                            corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=go_home)
+        elif text == "about us":
+            btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
+                            corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=about_us_window)
+        elif text == "manual":
+            btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
+                            corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=open_instruction_window)
+        else:
+            btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
+                            corner_radius=5, hover_color="#09AAA3", width=120, height=40)
+        btn.pack(side="left", padx=10)
+
+def about_us_window():   
+    if "aboutUs" not in active_windows or not active_windows["aboutUs"].winfo_exists():
+        # Create top-level window
+        tk_root.withdraw()
+        aboutUs = ctk.CTkToplevel(tk_root)
+        aboutUs.title("About Us")
+        aboutUs.geometry(f"{WIDTH}x{HEIGHT}")
+        aboutUs.configure(bg="#e5e5e5")
+        center_window(aboutUs, WIDTH, HEIGHT)
+
+        # Create Navigation Bar
+        create_navigation_bar(aboutUs, aboutUs)
+
+        # About Section
+        about_label = ctk.CTkLabel(aboutUs, text="About EleVista", font=("Poppins", 35, "bold"))
+        about_label.pack(anchor="w", pady=(20, 5), padx=(75, 5))
+
+        description = ("EleVista was developed to bridge the gap between traditional surveying and the cutting-edge power of AI, making land elevation measurement smarter, faster, and more accessible than ever before.")
+        desc_label = ctk.CTkLabel(aboutUs, text=description, wraplength=900, justify="center", font=("Poppins", 20))
+        desc_label.pack(pady=(20, 20))
+
+        # Meet The Team Section
+        team_label = ctk.CTkLabel(aboutUs, text="MEET THE TEAM", font=("Poppins", 25, "bold"))
+        team_label.pack(pady=(20, 0))
+        
+        # Team Members Data
+        members = [
+            ("REGIENA MAE E. CABALLES", "CPE - 4201"),
+            ("CHANTEL KYLIE M. MALUNDAS", "CPE - 4201"),
+            ("JHON KENNETH M. YLAGAN", "CPE - 4201")
+            ]# Create Colorless Parent Frame to Center Members
+        container_frame = ctk.CTkFrame(aboutUs, fg_color="transparent")
+        container_frame.pack(pady=(20, 40))
+        image_paths = ["2.jpg", "1.jpg", "3.jpg"]
+
+        # Create Separate Frames for Each Member
+        for (name, title), image_path in zip(members, image_paths):
+            member_frame = ctk.CTkFrame(container_frame, width=250, height=300, fg_color="#D9D9D9")
+            member_frame.pack(side="left", padx=(20, 20))
+            member_frame.pack_propagate(False)
+
+            # Create Circular Canvas
+            circle_canvas = ctk.CTkCanvas(member_frame, width=300, height=300, bg="#D9D9D9", highlightthickness=0)
+            circle_canvas.create_oval(10, 10, 290, 290, outline="#0C2C44", width=2)
+            circle_canvas.pack(pady=20)
+
+            # Insert corresponding image with transparency
+            insert_circular_image(circle_canvas, image_path)
+
+            # Display Name and Title
+            name_label = ctk.CTkLabel(member_frame, text=name, font=("Poppins", 15, "bold"))
+            name_label.pack()
+
+            title_label = ctk.CTkLabel(member_frame, text=title, font=("Poppins", 14))
+            title_label.pack()
+
+        active_windows["aboutUs"] = aboutUs
+
+    
+    close_all_windows(active_windows["aboutUs"])
+    active_windows["aboutUs"].deiconify()
+
+
+
+# Function the opens manual
+def open_instruction_window():
+    # Create top-level window
+    if "instructionWindow" not in active_windows or not active_windows["instructionWindow"].winfo_exists():
+        tk_root.withdraw()
+        instructionWindow = ctk.CTkToplevel(tk_root)
+        instructionWindow.title("Manual")
+        instructionWindow.geometry(f"{WIDTH}x{HEIGHT}")
+        instructionWindow.configure(bg="#e5e5e5")
+        instructionWindow.focus_set()
+        center_window(instructionWindow, WIDTH, HEIGHT)
+
+        # Create Navigation Bar
+        create_navigation_bar(instructionWindow, instructionWindow) 
+        # Create a canvas and scrollbar
+        canvas = tk.Canvas(instructionWindow)
+        scrollbar = ttk.Scrollbar(instructionWindow, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(
+                scrollregion=canvas.bbox("all")
+            )
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # Title Section
+        title_label = tk.Label(scrollable_frame, text="Instruction Manual", font=("Arial", 40, "bold"))
+        title_label.pack(pady= 1, padx=30, anchor='w')
+
+        # How to Collect Data Section
+        collect_label = tk.Label(scrollable_frame, text="How to Collect Data", font=("Arial", 30, "bold"))
+        collect_label.pack(anchor="w", pady=1, padx=20)
+
+        tools_label = tk.Label(scrollable_frame, text="Tools You'll Need:", font=("Arial", 22))
+        tools_label.pack(anchor="w", padx=40)
+
+        tools = ["Tripod", "Ruler or measuring tape", "Chalk/marker stick", "Printed scale ruler", "Stakes or fixed stick"]
+        for tool in tools:
+            tk.Label(scrollable_frame, text=f"• {tool}", font=("Arial", 16)).pack(anchor="w", padx=60)
+
+        # Steps for Data Gathering
+        steps_label = tk.Label(scrollable_frame, text="Steps for Data Gathering", font=("Arial", 16, "bold"))
+        steps_label.pack(anchor="w", padx=20, pady=10)
+
+        steps = [
+            "Position the tripod with the mobile phone on the ground, centered in the middle of the inclined land.",
+            "Ensure that the bubble level on the tripod is centered.",
+            "Measure the height of the phone from the ground and ensure it is 83 cm.",
+            "Adjust the tilt feature (camera level) of the phone and ensure that it is leveled at a 90-degree angle.",
+            "Measure distances ranging from 2 meters to 12 meters. (Note: The model only recognizes distances up to 12 meters).",
+            "Position the tripod or marker stick at the desired distance.",
+            "Capture an image of the person holding the tripod or marker stick. Make sure the height of the object is visible in the picture."
+        ]
+
+        for i, step in enumerate(steps, 1):
+            tk.Label(scrollable_frame, text=f"{i}. {step}").pack(anchor="w", padx=40, pady=2)
+
+        # How to Use the System
+        use_label = tk.Label(scrollable_frame, text="How to Use the System", font=("Arial", 16, "bold"))
+        use_label.pack(anchor="w", padx=20, pady=10)
+
+        use_steps = [
+            "Step 1: Import the Images - Import the images and upload images to the system.",
+            "Step 2: Input the Image - Name the file and provide a description. (The description is optional)",
+            "Step 3: Import the Images - Wait for the system to process the images. Once completed, the survey information will be displayed."
+        ]
+
+        for step in use_steps:
+            tk.Label(scrollable_frame, text=step).pack(anchor="w", padx=40, pady=2)
+
+        # Pack canvas and scrollbar
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        active_windows["instructionWindow"] = instructionWindow
+
+    close_all_windows(active_windows["instructionWindow"])
+    active_windows["instructionWindow"].deiconify()
 
 # Function to center any window
 def center_window(window, width, height):
@@ -69,11 +272,17 @@ logo_label.pack(side="left", padx=20)
 nav_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
 nav_frame.pack(side="right", padx=20, pady=15)
 
-nav_buttons = ["Home", "Surveys", "Manual", "About Us"]
+nav_buttons = ["home", "surveys", "manual", "about us"]
 for text in nav_buttons:
-    if text == "Home":
+    if text == "home":
         btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
                         corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=go_home)
+    elif text == "about us":
+        btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
+                        corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=about_us_window)
+    elif text == "manual":
+        btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
+                        corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=open_instruction_window)
     else:
         btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
                         corner_radius=5, hover_color="#09AAA3", width=120, height=40)
@@ -140,26 +349,7 @@ def open_loading_screen(parent_window):
                             font=("Arial", 14, "italic"), text_color="white", fg_color="transparent")
     text_label.place(relx=0.5, rely=0.58, anchor="center")
 
-    # Add header frame to match other windows
-    header_frame_loading = ctk.CTkFrame(loading_window, height=70, fg_color="#0f0f0f")
-    header_frame_loading.pack(side="top", fill="x", pady=0)
-
-    logo_label_loading = ctk.CTkLabel(header_frame_loading, image=logo_photo, text="", fg_color="transparent")
-    logo_label_loading.pack(side="left", padx=20)
-
-    nav_frame_loading = ctk.CTkFrame(header_frame_loading, fg_color="transparent")
-    nav_frame_loading.pack(side="right", padx=20, pady=15)
-
-    for text in nav_buttons:
-        if text == "Home":
-            btn = ctk.CTkButton(nav_frame_loading, text=text, font=("Poppins", 20), fg_color="transparent",
-                           text_color="white", corner_radius=5, hover_color="#09AAA3", width=120, height=40, 
-                           command=go_home)
-        else:
-            btn = ctk.CTkButton(nav_frame_loading, text=text, font=("Poppins", 20), fg_color="transparent",
-                           text_color="white", corner_radius=5, hover_color="#09AAA3", width=120, height=40)
-        btn.pack(side="left", padx=10)
-
+    create_navigation_bar(loading_window, loading_window) 
     # Close the loading screen after 5 seconds and show the survey result window
     def close_loading():
         if loading_window.winfo_exists():
@@ -212,26 +402,7 @@ def upload_file():
         desc_var.trace_add("write", validate_fields)
         phone_var.trace_add("write", validate_fields)
 
-        # Header Frame (Survey Window)
-        header_frame_survey = ctk.CTkFrame(survey_window, height=70, fg_color="#0f0f0f")
-        header_frame_survey.pack(side="top", fill="x", pady=0)
-
-        logo_label_survey = ctk.CTkLabel(header_frame_survey, image=logo_photo, text="", fg_color="transparent")
-        logo_label_survey.pack(side="left", padx=20)
-
-        nav_frame_survey = ctk.CTkFrame(header_frame_survey, fg_color="transparent")
-        nav_frame_survey.pack(side="right", padx=20, pady=15)
-
-        for text in nav_buttons:
-            if text == "Home":
-                btn = ctk.CTkButton(nav_frame_survey, text=text, font=("Poppins", 20), fg_color="transparent",
-                                text_color="white", corner_radius=5, hover_color="#09AAA3", width=120, height=40,
-                                command=go_home)
-            else:
-                btn = ctk.CTkButton(nav_frame_survey, text=text, font=("Poppins", 20), fg_color="transparent",
-                                text_color="white", corner_radius=5, hover_color="#09AAA3", width=120, height=40)
-            btn.pack(side="left", padx=10)
-
+        create_navigation_bar(survey_window, survey_window) 
         # Left Image Frame
         image_frame = ctk.CTkFrame(survey_window, width=500, height=500, fg_color="#ffffff")
         image_frame.pack(side="left", padx=50, pady=50)
@@ -284,74 +455,88 @@ upload_btn = ctk.CTkButton(
 )
 upload_btn.place(relx=0.5, rely=0.6, anchor="center")
 
+
 def surveyResult():
-    # Create the top-level survey detail window
-    survey_window = ctk.CTkToplevel(tk_root)
-    open_windows.append(survey_window)
+    if not tk_root.winfo_exists():
+        print("Error: tk_root does not exist.")
+        return
     
-    survey_window.title("EleVista - Survey Detail")
-    survey_window.geometry(f"{WIDTH}x{HEIGHT}")
-    survey_window.configure(bg="#e5e5e5")
-    center_window(survey_window, WIDTH, HEIGHT)
-    
-    # Create the header frame
-    header_frame_survey = ctk.CTkFrame(survey_window, height=70, fg_color="#0f0f0f")
-    header_frame_survey.pack(side="top", fill="x", pady=0)
+    # Create the survey detail window
+    survey_result_window = ctk.CTkToplevel(tk_root)
+    survey_result_window.title("EleVista - Survey Detail")
+    survey_result_window.geometry(f"{WIDTH}x{HEIGHT}")
+    survey_result_window.configure(bg="#e5e5e5")
+    center_window(survey_result_window, WIDTH, HEIGHT)
 
-    logo_label_survey = ctk.CTkLabel(header_frame_survey, image=logo_photo, text="", fg_color="transparent")
-    logo_label_survey.pack(side="left", padx=20)
+    create_navigation_bar(survey_result_window, survey_result_window)
 
-    nav_frame_survey = ctk.CTkFrame(header_frame_survey, fg_color="transparent")
-    nav_frame_survey.pack(side="right", padx=20, pady=15)
+    # Main Content Frame
+    main_frame = ctk.CTkFrame(survey_result_window, fg_color="#e5e5e5")
+    main_frame.pack(pady=40, padx=20, fill="both", expand=True)
 
-    for text in nav_buttons:
-        if text == "Home":
-            btn = ctk.CTkButton(nav_frame_survey, text=text, font=("Poppins", 20), fg_color="transparent", 
-                                text_color="white", corner_radius=5, hover_color="#09AAA3", width=120, height=40,
-                                command=go_home)
-        else:
-            btn = ctk.CTkButton(nav_frame_survey, text=text, font=("Poppins", 20), fg_color="transparent", 
-                                text_color="white", corner_radius=5, hover_color="#09AAA3", width=120, height=40)
-        btn.pack(side="left", padx=10)
-    
-    # Survey Content Frame (Ensure grid or pack isn't conflicting)
-    content_frame = ctk.CTkFrame(survey_window, bg_color="#e5e5e5", width=900)
-    content_frame.place(relx=0.5, rely=0.5, anchor="center")
-    
-    # Survey Detail Section
-    details_frame = ctk.CTkFrame(content_frame, bg="#e5e5e5", width=600)
-    details_frame.grid(row=0, column=0, padx=20, pady=20)
-    
-    title_label = ctk.CTkLabel(details_frame, text="Survey 1", font=("Arial", 18, "bold"), fg="#333333")
-    title_label.grid(row=0, column=0, sticky="w", pady=(0, 10))
-    
-    date_label = ctk.CTkLabel(details_frame, text="March 8, 2025 | 9:21PM", font=("Arial", 10, "italic"), fg="#555555")
-    date_label.grid(row=1, column=0, sticky="w", pady=(0, 5))
-    
-    # Left side - Image frame
-    img_frame = ctk.CTkFrame(content_frame, bg="black", width=250, height=250)
-    img_frame.grid(row=0, column=1, padx=20)
-    
-    # Add a placeholder image to the frame
-    placeholder_img = Image.open("placeholder.png")
-    placeholder_img = placeholder_img.resize((250, 250), Image.Resampling.LANCZOS)
-    ctk_img = ctk.CTkImage(light_image=placeholder_img, dark_image=placeholder_img, size=(250, 250))
-    img_label = ctk.CTkLabel(img_frame, image=ctk_img, text="")
-    img_label.pack()
+    # Left - Image Frame
+    img_frame = ctk.CTkFrame(main_frame, fg_color="black", width=350, height=350)
+    img_frame.pack(side="left", padx=40)
 
-    # Survey description and metrics
+    try:
+        placeholder_img = Image.open("checkerboard.png")
+        placeholder_img = placeholder_img.resize((350, 350), Image.Resampling.LANCZOS)
+        ctk_img = ctk.CTkImage(light_image=placeholder_img, dark_image=placeholder_img, size=(350, 350))
+        img_label = ctk.CTkLabel(img_frame, image=ctk_img, text="")
+        img_label.pack()
+    except FileNotFoundError:
+        print("Image not found. Ensure 'checkerboard.png' exists.")
+
+    # Right - Survey Details
+    details_frame = ctk.CTkFrame(main_frame, fg_color="#e5e5e5")
+    details_frame.pack(side="left", padx=20)
+
+    # Title and Time
+    title_label = ctk.CTkLabel(details_frame, text="Survey 1", font=("Arial", 22, "bold"), text_color="#333333")
+    title_label.pack(anchor="w")
+
+    date_label = ctk.CTkLabel(details_frame, text="March 8, 2025 | 9:21PM", font=("Arial", 12, "italic"), text_color="#555555")
+    date_label.pack(anchor="w")
+
+    # Location
+    location_frame = ctk.CTkFrame(details_frame, fg_color="#e5e5e5")
+    location_frame.pack(anchor="w", pady=5)
+
+    bullet_label = ctk.CTkLabel(location_frame, text="●", font=("Arial", 12), text_color="#333333")
+    bullet_label.pack(side="left")
+
+    location_label = ctk.CTkLabel(location_frame, text="Sorosoro, Batangas City", font=("Arial", 12), text_color="#333333")
+    location_label.pack(side="left", padx=5)
+
+    edit_label = ctk.CTkLabel(location_frame, text="edit", font=("Arial", 10, "underline"), text_color="#555555", cursor="hand2")
+    edit_label.pack(side="left")
+
+    # Description
+    desc_label = ctk.CTkLabel(details_frame, text="Description:", font=("Arial", 12, "bold"), text_color="#333333")
+    desc_label.pack(anchor="w", pady=(10, 5))
+
+    desc_textbox = ctk.CTkTextbox(details_frame, width=350, height=100, fg_color="white", border_color="#ccc")
+    desc_textbox.pack()
+
+    desc_edit_label = ctk.CTkLabel(details_frame, text="edit", font=("Arial", 10, "underline"), text_color="#555555", cursor="hand2")
+    desc_edit_label.pack(anchor="w", pady=5)
+
+    # Survey Metrics
     metrics = [
-        ("Horizontal Distance:", ""),
-        ("Vertical Angle:", ""),
-        ("Slope:", ""),
-        ("Elevation:", "")
+        ("Horizontal Distance:", "N/A"),
+        ("Vertical Angle:", "N/A"),
+        ("Slope:", "N/A"),
+        ("Elevation:", "N/A")
     ]
-    
-    row_num = 2
+
     for label_text, value in metrics:
-        label = ctk.CTkLabel(details_frame, text=label_text, font=("Arial", 10, "bold"), fg="#333333")
-        label.grid(row=row_num, column=0, sticky="w", pady=(0, 10))
-        row_num += 1
+        label = ctk.CTkLabel(details_frame, text=f"{label_text}", font=("Arial", 12, "bold"), text_color="#333333")
+        label.pack(anchor="w", pady=2)
+        
+        value_label = ctk.CTkLabel(details_frame, text=value, font=("Arial", 12), text_color="#333333")
+        value_label.pack(anchor="w")
+
+   
 
 # Run Application
 tk_root.mainloop()
