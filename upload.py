@@ -5,6 +5,13 @@ import customtkinter as ctk
 from PIL import Image, ImageTk, ImageDraw
 from itertools import cycle
 from tkinter import messagebox
+import firebase_admin
+from firebase_admin import credentials, firestore
+import hashlib  # For password hashing
+import json
+import os
+
+
 
 # Initialize customtkinter
 ctk.set_appearance_mode("white")
@@ -17,6 +24,13 @@ WIDTH, HEIGHT = 1200, 720
 open_windows = []
 
 active_windows = {}
+
+# Initialize Firebase
+cred = credentials.Certificate("elevista-1cae7-firebase-adminsdk-fbsvc-9a5b78dc69.json")
+firebase_admin.initialize_app(cred)
+db = firestore.client()
+
+
 
 
 def close_all_windows(except_window=None):
@@ -50,58 +64,96 @@ def go_home():
     open_windows.clear()
     tk_root.deiconify()
     tk_root.focus_set()
-
+    create_navigation_bar(tk_root)
 
 
 """NAV BAR FOR THE TOP LEVEL WINDOWS"""
-def create_navigation_bar(parent, parent_window):
-    header_frame = ctk.CTkFrame(parent, height=70, fg_color="#0f0f0f")
-    header_frame.pack(side="top", fill="x", pady=0)
+def create_navigation_bar(parent):
+    # Use window-specific attributes instead of global variables
+    if hasattr(parent, "header_frame") and parent.header_frame.winfo_exists():
+        parent.header_frame.destroy()  # Remove old header frame
 
+    # Create a new header frame
+    parent.header_frame = ctk.CTkFrame(parent, height=70, fg_color="#0f0f0f")
+    parent.header_frame.pack(side="top", fill="x", pady=0)
 
-    logo_label = ctk.CTkLabel(header_frame, text="EleVista", font=("Poppins", 30), fg_color="transparent", text_color="white")
-    logo_label.pack(side="left", padx=(30, 30))  # Adjust the first value to move it to the right
-
-
-    # Navigation Buttons
-    nav_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
-    nav_frame.pack(side="right", padx=20, pady=15)
-    login_btn = None  
-
-    nav_buttons = ["home", "surveys", "manual", "about us","LOGIN", "SIGN UP"]
-    for text in nav_buttons:
-        if text == "home":
-            btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
-                            corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=go_home)
-        elif text == "surveys":
-            btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
-                            corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=about_us_window)
-        elif text == "manual":
-            btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
-                            corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=open_instruction_window)
-        elif text == "about us":
-            btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
-                            corner_radius=5, hover_color="#09AAA3", width=120, height=40)
-        elif text == "LOGIN":
-            btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="#09AAA3", text_color="white",
-                            corner_radius=5, width=120, height=40, command=show_login_window)
-               # Function to change text color on hover
-            login_btn = btn
-
+    # Show "EleVista" text for top-level window, else show logo for main window
+    try:
+        if parent == tk_root:
+            logo_image = Image.open("LOGO.png").resize((50, 50), Image.Resampling.LANCZOS)
+            logo_photo = ctk.CTkImage(light_image=logo_image, dark_image=logo_image, size=(50, 50))
+            logo_label = ctk.CTkLabel(parent.header_frame, image=logo_photo, text="", fg_color="transparent")
+            parent.logo_photo = logo_photo  # Prevent garbage collection
         else:
-            btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
-                            corner_radius=5, hover_color="#09AAA3",border_color="#09AAA3", border_width=2,width=120, height=40,command=show_signup_window)
-        btn.pack(side="left", padx=10)
-    if login_btn:
-    
-        def on_enter(event):
-            login_btn.configure(text_color="#09AAA3", fg_color="white")  # Change both text and background
+            logo_label = ctk.CTkLabel(parent.header_frame, text="EleVista", font=("Poppins", 30), fg_color="transparent", text_color="white")
+    except Exception as e:
+        print(f"Error loading image: {e}")
+        logo_label = ctk.CTkLabel(parent.header_frame, text="Logo Not Found", font=("Poppins", 20), fg_color="transparent", text_color="white")
 
-        def on_leave(event):
-            login_btn.configure(text_color="white", fg_color="#09AAA3") 
+    logo_label.pack(side="left", padx=(30, 30))
 
-    login_btn.bind("<Enter>", on_enter)
-    login_btn.bind("<Leave>", on_leave)
+    # Destroy old nav frame if it exists
+    if hasattr(parent, "nav_frame") and parent.nav_frame.winfo_exists():
+        parent.nav_frame.destroy()
+
+    #Create new Navigation Frame
+    parent.nav_frame = ctk.CTkFrame(parent.header_frame, fg_color="transparent")
+    parent.nav_frame.pack(side="right", padx=20, pady=15)
+    print(f"Created new nav_frame for {parent}")  # Debugging print
+
+    #Show Profile Button if Logged In, else show Login & Sign-Up
+    nav_buttons = ["home", "surveys", "manual", "about us", "LOGIN", "SIGN UP"]
+
+    if is_logged_in:
+        for text in nav_buttons:
+            if text == "home":
+                btn = ctk.CTkButton(parent.nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
+                                    corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=go_home)
+            elif text == "surveys":
+                btn = ctk.CTkButton(parent.nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
+                                    corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=about_us_window)
+            elif text == "manual":
+                btn = ctk.CTkButton(parent.nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
+                                    corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=open_instruction_window)
+            elif text == "about us":
+                btn = ctk.CTkButton(parent.nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
+                                    corner_radius=5, hover_color="#09AAA3", width=120, height=40)
+            btn.pack(side="left", padx=10)
+
+        # Add profile image button
+        profile_img = ctk.CTkImage(Image.open("profile.png"), size=(30, 30))
+        profile_btn = ctk.CTkButton(parent.nav_frame, text="", image=profile_img, width=40, height=40,
+                                    fg_color="transparent", hover_color="#09AAA3")
+        profile_btn.pack(side="left", padx=(10, 5))
+        parent.profile_img = profile_img  # Prevent garbage collection
+
+    else:
+        for text in nav_buttons:
+            if text == "home":
+                btn = ctk.CTkButton(parent.nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
+                                    corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=go_home)
+            elif text == "surveys":
+                btn = ctk.CTkButton(parent.nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
+                                    corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=about_us_window)
+            elif text == "manual":
+                btn = ctk.CTkButton(parent.nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
+                                    corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=open_instruction_window)
+            elif text == "about us":
+                btn = ctk.CTkButton(parent.nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
+                                    corner_radius=5, hover_color="#09AAA3", width=120, height=40)
+            elif text == "LOGIN":
+                btn = ctk.CTkButton(parent.nav_frame, text=text, font=("Poppins", 20), fg_color="#09AAA3", text_color="white",
+                                    corner_radius=5, width=120, height=40, command=show_login_window)
+            else:
+                btn = ctk.CTkButton(parent.nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
+                                    corner_radius=5, hover_color="#09AAA3", border_color="#09AAA3", border_width=2, width=120, height=40,
+                                    command=show_signup_window)
+
+            btn.pack(side="left", padx=10)
+
+    # ✅ Force UI update
+    parent.header_frame.update_idletasks()
+
 """END HERE"""
 
 """ABOUT US WINDOW"""
@@ -116,7 +168,7 @@ def about_us_window():
         center_window(aboutUs, WIDTH, HEIGHT)
 
         # Create Navigation Bar
-        create_navigation_bar(aboutUs, aboutUs)
+        create_navigation_bar(aboutUs)
 
         # About Section
         about_label = ctk.CTkLabel(aboutUs, text="About EleVista", font=("Poppins", 35, "bold"))
@@ -184,7 +236,7 @@ def open_instruction_window():
         center_window(instructionWindow, WIDTH, HEIGHT)
 
         # Create Navigation Bar
-        create_navigation_bar(instructionWindow, instructionWindow) 
+        create_navigation_bar(instructionWindow) 
         # Create a canvas and scrollbar
         canvas = tk.Canvas(instructionWindow)
         scrollbar = ttk.Scrollbar(instructionWindow, orient="vertical", command=canvas.yview)
@@ -257,22 +309,72 @@ def open_instruction_window():
 """END HERE"""
 
 
+        
 """LOGIN FUNCTIONALITY"""
-def login():
-    username = email_entry.get()
+REMEMBER_ME_FILE = "remember_me.json"
+
+
+# Function to hash passwords
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+# Function to save credentials
+def save_credentials(email):
+    with open(REMEMBER_ME_FILE, "w") as f:
+        json.dump({"email": email}, f)
+
+# Function to load saved credentials
+def load_credentials():
+    if os.path.exists(REMEMBER_ME_FILE):
+        with open(REMEMBER_ME_FILE, "r") as f:
+            data = json.load(f)
+            return data.get("email", "")
+    return ""
+# Function to check credentials
+is_logged_in = False  
+
+def login(email_entry, password_entry, remember_var, parent_window):
+    global is_logged_in  
+
+    email = email_entry.get()
     password = password_entry.get()
-    
-    if username == "admin" and password == "password":  # Sample credentials
-        messagebox.showinfo("Login Successful", "Welcome!")
-        login_window.destroy()
-    else:
-        messagebox.showerror("Login Failed", "Invalid email or password.")
+
+    if not email or not password:
+        messagebox.showerror("Error", "Please enter both email and password.")
+        return
+
+    hashed_password = hash_password(password)
+
+    try:
+        users_ref = db.collection("users").where("email", "==", email).stream()
+        for user in users_ref:
+            user_data = user.to_dict()
+            if user_data["password"] == hashed_password:
+                if remember_var.get():
+                    save_credentials(email)  
+
+                messagebox.showinfo("Success", "Login successful!")
+
+                # Update login state
+                is_logged_in = True  
+
+                # Dynamically refresh navbar
+                create_navigation_bar(parent_window)  
+
+                return
+        
+        messagebox.showerror("Error", "Invalid email or password.")
+
+    except Exception as e:
+        messagebox.showerror("Error", f"Firestore error: {str(e)}")
+
+
+
 
 def close_window():
     login_window.destroy()
 
 def show_login_window():
-    global login_window, email_entry, password_entry, remember_var
+    global login_window, email_entry, password_entry, remember_var, toggle_button
     
     # Create the login window
     login_window = ctk.CTkToplevel(tk_root)
@@ -292,46 +394,46 @@ def show_login_window():
     
     # Remove topmost attribute after placement
     login_window.after(100, lambda: login_window.attributes('-topmost', False))
-
-    # Close Button (X)
+    saved_email = load_credentials()
+        # Close Button (X)
     close_button = ctk.CTkButton(
         login_window, text="X", font=("Poppins", 14, "bold"),
-        fg_color="white", text_color="black", width=30, height=30,
+        fg_color="white", text_color="#00b3b3", width=30, height=30,
         corner_radius=0, border_width=0, command=login_window.destroy
     )
     close_button.place(x=450, y=10)
+    ctk.CTkLabel(login_window, text="LOGIN", font=("Poppins", 30, "bold"), text_color="#09AAA3").pack(pady=(50, 20))
 
-    # Login Label
-    login_label = ctk.CTkLabel(
-        login_window, text="LOGIN", font=("Poppins", 30, "bold"),
-        text_color="#09AAA3", fg_color="transparent"
-    )
-    login_label.pack(pady=(50, 20))
+    ctk.CTkLabel(login_window, text="Email", font=("Poppins", 14)).pack(anchor="w", padx=50)
+    email_entry = ctk.CTkEntry(login_window, width=350, font=("Poppins", 14))
+    email_entry.pack(anchor="w",pady=10,padx=52)
+    email_entry.insert(0, saved_email)
 
-    # Email Label & Entry
-    ctk.CTkLabel(login_window, text="Email", fg_color="transparent", font=("Poppins", 14)).pack(anchor="w", padx=50)
-    email_entry = ctk.CTkEntry(login_window, width=400, font=("Poppins", 14))
-    email_entry.pack(pady=10)
+    # Ensure Password Label is Visible
+    password_label = ctk.CTkLabel(login_window, text="Password", font=("Poppins", 14))
+    password_label.pack(anchor="w", padx=50, pady=(10, 0))  # Ensure correct placement
 
-    # Password Label & Entry
-    ctk.CTkLabel(login_window, text="Password", fg_color="transparent", font=("Poppins", 14)).pack(anchor="w", padx=50)
-    password_entry = ctk.CTkEntry(login_window, width=400, font=("Poppins", 14), show="*")
-    password_entry.pack(pady=10)
+    # Password Entry + Eye Button Frame
+    password_frame = ctk.CTkFrame(login_window, fg_color="transparent")
+    password_frame.pack(pady=5)
+
+    # Password Entry
+    password_entry = ctk.CTkEntry(password_frame, width=350, font=("Poppins", 14), show="*")
+    password_entry.pack(side="left", padx=(0, 5))
+
+    # Eye Toggle Button (inside password field)
+    toggle_button = ctk.CTkButton(password_frame, text="", width=30, height=30, fg_color="transparent",
+                                  image=eye_closed_img, command=toggle_password)
+    toggle_button.pack(side="left")
 
     # Remember Me Checkbox
-    remember_var = tk.BooleanVar()
-    remember_me = ctk.CTkCheckBox(
-        login_window, text="Remember Me ?", variable=remember_var,
-        font=("Poppins", 12)
-    )
+    remember_var = tk.BooleanVar(value=bool(saved_email))
+    remember_me = ctk.CTkCheckBox(login_window, text="Remember Me ?", variable=remember_var, font=("Poppins", 12))
     remember_me.pack(anchor="w", padx=50, pady=10)
 
     # Login Button
-    login_btn = ctk.CTkButton(
-        login_window, text="LOGIN", font=("Poppins", 14, "bold"),
-        fg_color="#00b3b3", text_color="white", width=250, height=40,
-        command=login  # Using your defined login function
-    )
+    login_btn = ctk.CTkButton(login_window, text="LOGIN", font=("Poppins", 14, "bold"), fg_color="#00b3b3",
+                              text_color="white", width=200, height=40, command=lambda: login(email_entry, password_entry, remember_var,tk_root))
     login_btn.pack(pady=20)
 
     # Forgot Password Label
@@ -345,26 +447,34 @@ def show_login_window():
     ctk.CTkLabel(login_window, text="_________________ or _________________", text_color="gray", 
                 fg_color="transparent", font=("Poppins", 12)).pack(pady=7)
 
+
     # Signup Link
-    signup_label = ctk.CTkLabel(
-        login_window, text="Need an account? SIGN UP", text_color="#00b3b3",
-        fg_color="transparent", font=("Poppins", 12, "bold"), cursor="hand2"
-    )
+    signup_label = ctk.CTkLabel(login_window, text="Need an account? SIGN UP", text_color="#00b3b3",
+                                font=("Poppins", 12, "bold"), cursor="hand2")
     signup_label.pack(pady=5)
+    signup_label.bind("<Button-1>", lambda e: show_signup_window())
 
-    # Focus on the login window
     login_window.focus_force()
-
-    
-    # Don't use mainloop() as it will block the main window
-    # login_window.mainloop()
+ # Load eye images
+eye_open_img = ctk.CTkImage(Image.open("view.png"), size=(25, 25))
+eye_closed_img = ctk.CTkImage(Image.open("hide.png"), size=(25, 25))
+def toggle_password():
+    """Toggle password visibility and switch eye icon."""
+    if password_entry.cget("show") == "*":
+        password_entry.configure(show="")  # Show password
+        toggle_button.configure(image=eye_open_img)  # Switch to open eye image
+    else:
+        password_entry.configure(show="*")  # Hide password
+        toggle_button.configure(image=eye_closed_img)  # Switch to closed eye image
 """END HERE"""
 
 
 """SIGN UP"""
-def show_signup_window():
-    global signup_window, email_entry, password_entry, confirm_password_entry
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
 
+def show_signup_window():
+    
     # Create the sign-up window
     signup_window = ctk.CTkToplevel(tk_root)
     signup_window.title("Sign Up")
@@ -417,10 +527,10 @@ def show_signup_window():
     # Sign-Up Button
     signup_btn = ctk.CTkButton(
         signup_window, text="SIGN UP", font=("Poppins", 14, "bold"),
-        fg_color="#00b3b3", text_color="white", width=250, height=40
+        fg_color="#00b3b3", text_color="white", width=250, height=40,
+        command=lambda: sign_up(email_entry, password_entry, confirm_password_entry)  # Pass the entry fields
     )
     signup_btn.pack(pady=20)
-
     # Divider Line
     ctk.CTkLabel(signup_window, text="_________________ or _________________", text_color="gray",
                  fg_color="transparent", font=("Poppins", 12)).pack(pady=5)
@@ -431,9 +541,37 @@ def show_signup_window():
         fg_color="transparent", font=("Poppins", 12, "bold"), cursor="hand2"
     )
     login_label.pack(pady=5)
+    login_label.bind("<Button-1>", lambda e: show_login_window())
 
     # Focus on the sign-up window
     signup_window.focus_force()
+
+def sign_up(email_entry, password_entry, confirm_password_entry):
+    email = email_entry.get()
+    password = password_entry.get()
+    confirm_password = confirm_password_entry.get()
+
+    # Validate input
+    if not email or not password or not confirm_password:
+        messagebox.showerror("Error", "Please fill all fields.")
+        return
+
+    if password != confirm_password:
+        messagebox.showerror("Error", "Passwords do not match.")
+        return
+
+    # Hash the password
+    hashed_password = hash_password(password)
+
+    # Store user in Firestore
+    try:
+        db.collection("users").add({
+            "email": email,
+            "password": hashed_password  # Store hashed password
+        })
+        messagebox.showinfo("Success", "Account created successfully!")
+    except Exception as e:
+        messagebox.showerror("Error", f"Firestore error: {str(e)}")
 """END HERE"""
 
 
@@ -471,59 +609,11 @@ bg_photo = ctk.CTkImage(light_image=bg_image, dark_image=bg_image, size=(WIDTH, 
 bg_label = ctk.CTkLabel(tk_root, image=bg_photo, text="", fg_color="transparent")
 bg_label.place(x=0, y=0, relwidth=1, relheight=1)
 
-# Header Frame (Navigation Bar)
-header_frame = ctk.CTkFrame(tk_root, height=70, fg_color="#0f0f0f")
-header_frame.pack(side="top", fill="x", pady=0)
+# ✅ Define Global is_logged_in Variable
+is_logged_in = False
 
-# Load and display the logo
-logo_image = Image.open("logo.png")
-logo_image = logo_image.resize((50, 50), Image.Resampling.LANCZOS)
-logo_photo = ctk.CTkImage(light_image=logo_image, dark_image=logo_image, size=(50, 50))
-
-logo_label = ctk.CTkLabel(header_frame, image=logo_photo, text="", fg_color="transparent")
-logo_label.pack(side="left", padx=20)
-
-
-# Navigation Buttons for the main window
-nav_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
-nav_frame.pack(side="right", padx=20, pady=15)
-login_btn = None
-
-nav_buttons = ["home", "surveys", "manual", "about us", "LOGIN", "SIGN UP"]
-for text in nav_buttons:
-    if text == "home":
-        btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
-                        corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=go_home)
-    elif text == "surveys":
-        btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
-                        corner_radius=5, hover_color="#09AAA3", width=120, height=40)
-    elif text == "manual":
-        btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
-                        corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=open_instruction_window)
-    elif text == "about us":
-        btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
-                            corner_radius=5, hover_color="#09AAA3", width=120, height=40,command=about_us_window)
-    elif text == "LOGIN":
-        btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="#09AAA3", text_color="white",
-                            corner_radius=5, width=120, height=40,command=show_login_window)
-               # Function to change text color on hover
-        login_btn = btn
-
-    else:
-        btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
-                            corner_radius=5, hover_color="#09AAA3",border_color="#09AAA3", border_width=2,width=120, height=40,command=show_signup_window)
-    btn.pack(side="left", padx=10)
-
-if login_btn:
-        def on_enter(event):
-            login_btn.configure(text_color="#09AAA3", fg_color="white")  # Change both text and background
-
-        def on_leave(event):
-            login_btn.configure(text_color="white", fg_color="#09AAA3") 
-
-login_btn.bind("<Enter>", on_enter)
-login_btn.bind("<Leave>", on_leave)
-        
+# ✅ Call Navigation Bar Function
+create_navigation_bar(tk_root)
 """ENDS HERE"""
 
    
