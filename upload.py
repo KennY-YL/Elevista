@@ -4,6 +4,7 @@ from tkinter import filedialog
 import customtkinter as ctk
 from PIL import Image, ImageTk, ImageDraw
 from itertools import cycle
+from tkinter import messagebox
 
 # Initialize customtkinter
 ctk.set_appearance_mode("white")
@@ -17,12 +18,12 @@ open_windows = []
 
 active_windows = {}
 
+
 def close_all_windows(except_window=None):
     """Hide all windows except the specified one."""
     for name, window in active_windows.items():
         if window != except_window and window.winfo_exists():
             window.withdraw()
-
 
 def insert_circular_image(canvas, image_path):
     # Open and resize the image
@@ -50,6 +51,9 @@ def go_home():
     tk_root.deiconify()
     tk_root.focus_set()
 
+
+
+"""NAV BAR FOR THE TOP LEVEL WINDOWS"""
 def create_navigation_bar(parent, parent_window):
     header_frame = ctk.CTkFrame(parent, height=70, fg_color="#0f0f0f")
     header_frame.pack(side="top", fill="x", pady=0)
@@ -62,23 +66,45 @@ def create_navigation_bar(parent, parent_window):
     # Navigation Buttons
     nav_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
     nav_frame.pack(side="right", padx=20, pady=15)
+    login_btn = None  
 
-    nav_buttons = ["home", "surveys", "manual", "about us"]
+    nav_buttons = ["home", "surveys", "manual", "about us","LOGIN", "SIGN UP"]
     for text in nav_buttons:
         if text == "home":
             btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
                             corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=go_home)
-        elif text == "about us":
+        elif text == "surveys":
             btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
                             corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=about_us_window)
         elif text == "manual":
             btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
                             corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=open_instruction_window)
-        else:
+        elif text == "about us":
             btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
                             corner_radius=5, hover_color="#09AAA3", width=120, height=40)
-        btn.pack(side="left", padx=10)
+        elif text == "LOGIN":
+            btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="#09AAA3", text_color="white",
+                            corner_radius=5, width=120, height=40, command=show_login_window)
+               # Function to change text color on hover
+            login_btn = btn
 
+        else:
+            btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
+                            corner_radius=5, hover_color="#09AAA3",border_color="#09AAA3", border_width=2,width=120, height=40,command=show_signup_window)
+        btn.pack(side="left", padx=10)
+    if login_btn:
+    
+        def on_enter(event):
+            login_btn.configure(text_color="#09AAA3", fg_color="white")  # Change both text and background
+
+        def on_leave(event):
+            login_btn.configure(text_color="white", fg_color="#09AAA3") 
+
+    login_btn.bind("<Enter>", on_enter)
+    login_btn.bind("<Leave>", on_leave)
+"""END HERE"""
+
+"""ABOUT US WINDOW"""
 def about_us_window():   
     if "aboutUs" not in active_windows or not active_windows["aboutUs"].winfo_exists():
         # Create top-level window
@@ -141,8 +167,10 @@ def about_us_window():
     close_all_windows(active_windows["aboutUs"])
     active_windows["aboutUs"].deiconify()
 
+"""END HERE"""
 
 
+"""MANUAL WINDOW"""
 # Function the opens manual
 def open_instruction_window():
     # Create top-level window
@@ -226,6 +254,190 @@ def open_instruction_window():
     close_all_windows(active_windows["instructionWindow"])
     active_windows["instructionWindow"].deiconify()
 
+"""END HERE"""
+
+
+"""LOGIN FUNCTIONALITY"""
+def login():
+    username = email_entry.get()
+    password = password_entry.get()
+    
+    if username == "admin" and password == "password":  # Sample credentials
+        messagebox.showinfo("Login Successful", "Welcome!")
+        login_window.destroy()
+    else:
+        messagebox.showerror("Login Failed", "Invalid email or password.")
+
+def close_window():
+    login_window.destroy()
+
+def show_login_window():
+    global login_window, email_entry, password_entry, remember_var
+    
+    # Create the login window
+    login_window = ctk.CTkToplevel(tk_root)
+    login_window.title("Login")
+    login_window.configure(fg_color="white")
+    login_window.overrideredirect(True)
+    
+    # Define login window size
+    window_width = 500
+    window_height = 500
+    
+    # Make sure the window opens in the foreground
+    login_window.attributes('-topmost', True)
+
+    # Set the position and size
+    login_window.geometry(f"{window_width}x{window_height}+{560}+{169}")
+    
+    # Remove topmost attribute after placement
+    login_window.after(100, lambda: login_window.attributes('-topmost', False))
+
+    # Close Button (X)
+    close_button = ctk.CTkButton(
+        login_window, text="X", font=("Poppins", 14, "bold"),
+        fg_color="white", text_color="black", width=30, height=30,
+        corner_radius=0, border_width=0, command=login_window.destroy
+    )
+    close_button.place(x=450, y=10)
+
+    # Login Label
+    login_label = ctk.CTkLabel(
+        login_window, text="LOGIN", font=("Poppins", 30, "bold"),
+        text_color="#09AAA3", fg_color="transparent"
+    )
+    login_label.pack(pady=(50, 20))
+
+    # Email Label & Entry
+    ctk.CTkLabel(login_window, text="Email", fg_color="transparent", font=("Poppins", 14)).pack(anchor="w", padx=50)
+    email_entry = ctk.CTkEntry(login_window, width=400, font=("Poppins", 14))
+    email_entry.pack(pady=10)
+
+    # Password Label & Entry
+    ctk.CTkLabel(login_window, text="Password", fg_color="transparent", font=("Poppins", 14)).pack(anchor="w", padx=50)
+    password_entry = ctk.CTkEntry(login_window, width=400, font=("Poppins", 14), show="*")
+    password_entry.pack(pady=10)
+
+    # Remember Me Checkbox
+    remember_var = tk.BooleanVar()
+    remember_me = ctk.CTkCheckBox(
+        login_window, text="Remember Me ?", variable=remember_var,
+        font=("Poppins", 12)
+    )
+    remember_me.pack(anchor="w", padx=50, pady=10)
+
+    # Login Button
+    login_btn = ctk.CTkButton(
+        login_window, text="LOGIN", font=("Poppins", 14, "bold"),
+        fg_color="#00b3b3", text_color="white", width=250, height=40,
+        command=login  # Using your defined login function
+    )
+    login_btn.pack(pady=20)
+
+    # Forgot Password Label
+    forgot_label = ctk.CTkLabel(
+        login_window, text="Forgot Password ?", text_color="gray",
+        fg_color="transparent", font=("Poppins", 12), cursor="hand2"
+    )
+    forgot_label.pack()
+
+    # Divider Line
+    ctk.CTkLabel(login_window, text="_________________ or _________________", text_color="gray", 
+                fg_color="transparent", font=("Poppins", 12)).pack(pady=7)
+
+    # Signup Link
+    signup_label = ctk.CTkLabel(
+        login_window, text="Need an account? SIGN UP", text_color="#00b3b3",
+        fg_color="transparent", font=("Poppins", 12, "bold"), cursor="hand2"
+    )
+    signup_label.pack(pady=5)
+
+    # Focus on the login window
+    login_window.focus_force()
+
+    
+    # Don't use mainloop() as it will block the main window
+    # login_window.mainloop()
+"""END HERE"""
+
+
+"""SIGN UP"""
+def show_signup_window():
+    global signup_window, email_entry, password_entry, confirm_password_entry
+
+    # Create the sign-up window
+    signup_window = ctk.CTkToplevel(tk_root)
+    signup_window.title("Sign Up")
+    signup_window.configure(fg_color="white")
+    signup_window.overrideredirect(True)  # Remove window decorations
+
+     # Define login window size
+    window_width = 500
+    window_height = 500
+    
+    # Make sure the window opens in the foreground
+    signup_window.attributes('-topmost', True)
+
+    # Set the position and size
+    signup_window.geometry(f"{window_width}x{window_height}+{560}+{169}")
+    
+    # Remove topmost attribute after placement
+    signup_window.after(100, lambda: signup_window.attributes('-topmost', False))
+
+    # Close Button (X)
+    close_button = ctk.CTkButton(
+        signup_window, text="X", font=("Poppins", 14, "bold"),
+        fg_color="white", text_color="#00b3b3", width=30, height=30,
+        corner_radius=0, border_width=0, command=signup_window.destroy
+    )
+    close_button.place(x=450, y=10)
+
+    # Sign-Up Label
+    signup_label = ctk.CTkLabel(
+        signup_window, text="SIGN UP", font=("Poppins", 30, "bold"),
+        text_color="#00b3b3", fg_color="transparent"
+    )
+    signup_label.pack(pady=(50, 20))
+
+    # Email Label & Entry
+    ctk.CTkLabel(signup_window, text="Email", fg_color="transparent", font=("Poppins", 14)).pack(anchor="w", padx=50)
+    email_entry = ctk.CTkEntry(signup_window, width=400, font=("Poppins", 14))
+    email_entry.pack(pady=5)
+
+    # Password Label & Entry
+    ctk.CTkLabel(signup_window, text="Password", fg_color="transparent", font=("Poppins", 14)).pack(anchor="w", padx=50)
+    password_entry = ctk.CTkEntry(signup_window, width=400, font=("Poppins", 14), show="*")
+    password_entry.pack(pady=5)
+
+    # Confirm Password Label & Entry
+    ctk.CTkLabel(signup_window, text="Confirm Password", fg_color="transparent", font=("Poppins", 14)).pack(anchor="w", padx=50)
+    confirm_password_entry = ctk.CTkEntry(signup_window, width=400, font=("Poppins", 14), show="*")
+    confirm_password_entry.pack(pady=5)
+
+    # Sign-Up Button
+    signup_btn = ctk.CTkButton(
+        signup_window, text="SIGN UP", font=("Poppins", 14, "bold"),
+        fg_color="#00b3b3", text_color="white", width=250, height=40
+    )
+    signup_btn.pack(pady=20)
+
+    # Divider Line
+    ctk.CTkLabel(signup_window, text="_________________ or _________________", text_color="gray",
+                 fg_color="transparent", font=("Poppins", 12)).pack(pady=5)
+
+    # Already have an account? LOGIN
+    login_label = ctk.CTkLabel(
+        signup_window, text="Already a user? LOGIN", text_color="#00b3b3",
+        fg_color="transparent", font=("Poppins", 12, "bold"), cursor="hand2"
+    )
+    login_label.pack(pady=5)
+
+    # Focus on the sign-up window
+    signup_window.focus_force()
+"""END HERE"""
+
+
+"""FUNCTION FOR CENTERING THE WINDOWS"""
 # Function to center any window
 def center_window(window, width, height):
     window.update_idletasks()
@@ -237,7 +449,10 @@ def center_window(window, width, height):
 
     window.geometry(f"{width}x{height}+{x}+{y}")
     window.update()
+"""END HERE"""
 
+
+"""MAIN WINDOW"""
 # Create main window
 tk_root = ctk.CTk()
 tk_root.title("EleVista")
@@ -268,27 +483,51 @@ logo_photo = ctk.CTkImage(light_image=logo_image, dark_image=logo_image, size=(5
 logo_label = ctk.CTkLabel(header_frame, image=logo_photo, text="", fg_color="transparent")
 logo_label.pack(side="left", padx=20)
 
-# Navigation Buttons
+
+# Navigation Buttons for the main window
 nav_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
 nav_frame.pack(side="right", padx=20, pady=15)
+login_btn = None
 
-nav_buttons = ["home", "surveys", "manual", "about us"]
+nav_buttons = ["home", "surveys", "manual", "about us", "LOGIN", "SIGN UP"]
 for text in nav_buttons:
     if text == "home":
         btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
                         corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=go_home)
-    elif text == "about us":
+    elif text == "surveys":
         btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
-                        corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=about_us_window)
+                        corner_radius=5, hover_color="#09AAA3", width=120, height=40)
     elif text == "manual":
         btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
                         corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=open_instruction_window)
+    elif text == "about us":
+        btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
+                            corner_radius=5, hover_color="#09AAA3", width=120, height=40,command=about_us_window)
+    elif text == "LOGIN":
+        btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="#09AAA3", text_color="white",
+                            corner_radius=5, width=120, height=40,command=show_login_window)
+               # Function to change text color on hover
+        login_btn = btn
+
     else:
         btn = ctk.CTkButton(nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
-                        corner_radius=5, hover_color="#09AAA3", width=120, height=40)
+                            corner_radius=5, hover_color="#09AAA3",border_color="#09AAA3", border_width=2,width=120, height=40,command=show_signup_window)
     btn.pack(side="left", padx=10)
 
-# Function to open loading screen
+if login_btn:
+        def on_enter(event):
+            login_btn.configure(text_color="#09AAA3", fg_color="white")  # Change both text and background
+
+        def on_leave(event):
+            login_btn.configure(text_color="white", fg_color="#09AAA3") 
+
+login_btn.bind("<Enter>", on_enter)
+login_btn.bind("<Leave>", on_leave)
+        
+"""ENDS HERE"""
+
+   
+"""LOADING SCREEN"""
 # Function to open loading screen
 def open_loading_screen(parent_window):
     # Create the loading window using customtkinter instead of tkinter
@@ -364,7 +603,10 @@ def open_loading_screen(parent_window):
     # Disable main window while loading is active
     loading_window.transient(tk_root)
     loading_window.grab_set()
+"""ENDS HERE"""
 
+
+"""UPLOAD FILE FUNCTION"""
 # Function to open survey window and display image
 def upload_file():
     file_path = filedialog.askopenfilename(title="Select an Image", filetypes=[("Image Files", "*.png;*.jpg;*.jpeg")])
@@ -454,8 +696,11 @@ upload_btn = ctk.CTkButton(
     command=upload_file
 )
 upload_btn.place(relx=0.5, rely=0.6, anchor="center")
+"""ENDS HERE"""
 
 
+
+"""SURVEY RESULT WINDOW"""
 def surveyResult():
     if not tk_root.winfo_exists():
         print("Error: tk_root does not exist.")
@@ -535,8 +780,12 @@ def surveyResult():
         
         value_label = ctk.CTkLabel(details_frame, text=value, font=("Arial", 12), text_color="#333333")
         value_label.pack(anchor="w")
-
+"""ENDS HERE"""
    
+
+
+
+
 
 # Run Application
 tk_root.mainloop()
