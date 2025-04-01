@@ -69,11 +69,11 @@ def go_home():
 
 """NAV BAR FOR THE TOP LEVEL WINDOWS"""
 def create_navigation_bar(parent):
-    # Use window-specific attributes instead of global variables
     if hasattr(parent, "header_frame") and parent.header_frame.winfo_exists():
-        parent.header_frame.destroy()  # Remove old header frame
-
-    # Create a new header frame
+        print(f"Destroying old header_frame in {parent}")
+        parent.header_frame.destroy()
+    
+    # Create a new header frame and pack it at the top
     parent.header_frame = ctk.CTkFrame(parent, height=70, fg_color="#0f0f0f")
     parent.header_frame.pack(side="top", fill="x", pady=0)
 
@@ -96,15 +96,15 @@ def create_navigation_bar(parent):
     if hasattr(parent, "nav_frame") and parent.nav_frame.winfo_exists():
         parent.nav_frame.destroy()
 
-    #Create new Navigation Frame
+    # Create new Navigation Frame
     parent.nav_frame = ctk.CTkFrame(parent.header_frame, fg_color="transparent")
     parent.nav_frame.pack(side="right", padx=20, pady=15)
     print(f"Created new nav_frame for {parent}")  # Debugging print
 
-    #Show Profile Button if Logged In, else show Login & Sign-Up
+    # Show Profile Button if Logged In, else show Login & Sign-Up
     nav_buttons = ["home", "surveys", "manual", "about us", "LOGIN", "SIGN UP"]
 
-    if is_logged_in:
+    if is_logged_in:  # If logged in, show profile and other buttons
         for text in nav_buttons:
             if text == "home":
                 btn = ctk.CTkButton(parent.nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
@@ -123,11 +123,11 @@ def create_navigation_bar(parent):
         # Add profile image button
         profile_img = ctk.CTkImage(Image.open("profile.png"), size=(30, 30))
         profile_btn = ctk.CTkButton(parent.nav_frame, text="", image=profile_img, width=40, height=40,
-                                    fg_color="transparent", hover_color="#09AAA3")
+                                    fg_color="transparent", hover_color="#09AAA3", command=show_logout)
         profile_btn.pack(side="left", padx=(10, 5))
         parent.profile_img = profile_img  # Prevent garbage collection
 
-    else:
+    else:  # If not logged in, show Login and Sign Up buttons
         for text in nav_buttons:
             if text == "home":
                 btn = ctk.CTkButton(parent.nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
@@ -151,9 +151,9 @@ def create_navigation_bar(parent):
 
             btn.pack(side="left", padx=10)
 
-    # ✅ Force UI update
-    parent.header_frame.update_idletasks()
-
+    parent.header_frame.lift()
+    parent.update_idletasks()
+    print(f"Created new header_frame in {parent} with children: {[w for w in parent.winfo_children()]}")
 """END HERE"""
 
 """ABOUT US WINDOW"""
@@ -235,12 +235,13 @@ def open_instruction_window():
         instructionWindow.focus_set()
         center_window(instructionWindow, WIDTH, HEIGHT)
 
-        # Create Navigation Bar
-        create_navigation_bar(instructionWindow) 
-        # Create a canvas and scrollbar
-        canvas = tk.Canvas(instructionWindow)
+        # Create Navigation Bar (implement this function as needed)
+        create_navigation_bar(instructionWindow)
+
+        # Create canvas and scrollbar
+        canvas = tk.Canvas(instructionWindow, bg="#e5e5e5")
         scrollbar = ttk.Scrollbar(instructionWindow, orient="vertical", command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas)
+        scrollable_frame = tk.Frame(canvas, bg="#e5e5e5")
 
         scrollable_frame.bind(
             "<Configure>",
@@ -253,22 +254,123 @@ def open_instruction_window():
         canvas.configure(yscrollcommand=scrollbar.set)
 
         # Title Section
-        title_label = tk.Label(scrollable_frame, text="Instruction Manual", font=("Arial", 40, "bold"))
-        title_label.pack(pady= 1, padx=30, anchor='w')
+        title_label = tk.Label(scrollable_frame, text="Instruction Manual", font=("Arial", 35, "bold"), bg="#e5e5e5")
+        title_label.pack(pady=(35, 53), padx=25, anchor='w')
 
         # How to Collect Data Section
-        collect_label = tk.Label(scrollable_frame, text="How to Collect Data", font=("Arial", 30, "bold"))
-        collect_label.pack(anchor="w", pady=1, padx=20)
+        collect_label = tk.Label(scrollable_frame, text="How to Collect Data", font=("Arial", 25, "bold"), bg="#e5e5e5")
+        collect_label.pack(anchor="w", pady=(1, 25), padx=25)
 
-        tools_label = tk.Label(scrollable_frame, text="Tools You'll Need:", font=("Arial", 22))
+        tools_label = tk.Label(scrollable_frame, text="-----------------------------------------------------------------------Tools You'll Need:-----------------------------------------------------------------------------", font=("Arial", 22), bg="#e5e5e5")
         tools_label.pack(anchor="w", padx=40)
 
-        tools = ["Tripod", "Ruler or measuring tape", "Chalk/marker stick", "Printed scale ruler", "Stakes or fixed stick"]
-        for tool in tools:
-            tk.Label(scrollable_frame, text=f"• {tool}", font=("Arial", 16)).pack(anchor="w", padx=60)
+        image_files = [
+            ("im1.png", "Smartphone"),
+            ("im2.png", "Tripod Stand"),
+            ("im3.png", "Measuring Tape"),
+            ("im4.png", "Colored Chalk"),
+            ("im5.png", "Stadia Rod"),
+            ("im6.png", "Meter Stick"),
+            ("im7.png", "Pampatay sa bampira")
+        ]
+
+        # Canvas for image gallery
+        img_canvas = tk.Canvas(scrollable_frame, width=1200, height=350, bg="#0C1822", highlightthickness=0, relief="flat")
+        img_canvas.pack(pady=20)
+
+        # Frame to hold images
+        frame = tk.Frame(img_canvas, bg="#0C1822")
+        img_canvas.create_window((0, 0), window=frame, anchor="nw")
+
+        # Function to create rounded corner images
+        def add_rounded_corners(image, radius):
+            mask = Image.new("L", image.size, 0)
+            draw = ImageDraw.Draw(mask)
+            
+            draw.rounded_rectangle((0, 0, image.width, image.height), radius=radius, fill=255)
+            
+            rounded = Image.new("RGBA", image.size)
+            rounded.paste(image, (0, 0), mask)
+            
+            return rounded
+
+        # Hover text label
+        tooltip = tk.Label(instructionWindow, text="", bg="#333333", fg="white", font=("Helvetica", 12, "bold"), padx=10, pady=5)
+        tooltip.place_forget()
+
+        # Hover functions
+        def on_hover(event, text):
+            tooltip.config(text=text)
+            tooltip.place(
+                x=event.x_root - instructionWindow.winfo_rootx() + 15,
+                y=event.y_root - instructionWindow.winfo_rooty() + 15
+            )
+
+        def on_leave(event):
+            tooltip.place_forget()
+
+        # Load and display images with hover effect
+        images = []
+        labels = []
+
+        for i, (file, hover_text) in enumerate(image_files):
+            img = Image.open(file)
+            img = img.resize((270, 315), Image.LANCZOS)
+
+            img_rounded = add_rounded_corners(img, radius=40)
+
+            img_tk = ImageTk.PhotoImage(img_rounded)
+            images.append(img_tk)
+
+            lbl = tk.Label(frame, image=img_tk, bg="#0C1822", relief="flat", bd=0)
+            lbl.grid(row=0, column=i, padx=15, pady=10)
+            labels.append(lbl)
+
+            lbl.bind("<Enter>", lambda e, text=hover_text: on_hover(e, text))
+            lbl.bind("<Leave>", on_leave)
+
+        # Smooth scrolling functionality
+        scroll_x = 0
+        scroll_step = 60
+
+        def smooth_scroll(direction):
+            nonlocal scroll_x
+            max_scroll = (len(images) * 285) - img_canvas.winfo_width()
+
+            if direction == "left" and scroll_x < 0:
+                scroll_x += scroll_step
+            elif direction == "right" and abs(scroll_x) < max_scroll:
+                scroll_x -= scroll_step
+
+            img_canvas.xview_moveto(-scroll_x / img_canvas.winfo_width())
+
+        # Navigation buttons
+        btn_left = ctk.CTkButton(
+            instructionWindow, text="❮",
+            command=lambda: smooth_scroll("left"),
+            fg_color="#333333", hover_color="#555555",
+            text_color="white",
+            width=5, height=250,
+            corner_radius=10, font=("Helvetica", 18, "bold")
+        )
+        btn_left.place(x=170, y=250)
+
+        btn_right = ctk.CTkButton(
+            instructionWindow, text="❯",
+            command=lambda: smooth_scroll("right"),
+            fg_color="#333333", hover_color="#555555",
+            text_color="white",
+            width=5, height=250,
+            corner_radius=10, font=("Helvetica", 18, "bold")
+        )
+        btn_right.place(x=1001, y=250)
+
+        # Update canvas scroll region
+        frame.update_idletasks()
+        img_canvas.config(scrollregion=img_canvas.bbox("all"))
 
         # Steps for Data Gathering
-        steps_label = tk.Label(scrollable_frame, text="Steps for Data Gathering", font=("Arial", 16, "bold"))
+        steps_label = tk.Label(scrollable_frame, text="Steps for Data Gathering", font=("Arial", 25, "bold"), bg="#e5e5e5")
         steps_label.pack(anchor="w", padx=20, pady=10)
 
         steps = [
@@ -282,20 +384,20 @@ def open_instruction_window():
         ]
 
         for i, step in enumerate(steps, 1):
-            tk.Label(scrollable_frame, text=f"{i}. {step}").pack(anchor="w", padx=40, pady=2)
+            tk.Label(scrollable_frame, text=f"{i}. {step}", bg="#e5e5e5",font=("Arial", 16)).pack(anchor="w", padx=40, pady=2)
 
         # How to Use the System
-        use_label = tk.Label(scrollable_frame, text="How to Use the System", font=("Arial", 16, "bold"))
+        use_label = tk.Label(scrollable_frame, text="How to Use the System", font=("Arial", 16, "bold"), bg="#e5e5e5")
         use_label.pack(anchor="w", padx=20, pady=10)
 
         use_steps = [
-            "Step 1: Import the Images - Import the images and upload images to the system.",
-            "Step 2: Input the Image - Name the file and provide a description. (The description is optional)",
-            "Step 3: Import the Images - Wait for the system to process the images. Once completed, the survey information will be displayed."
+            "Step 1: Import the Images - Upload images to the system.",
+            "Step 2: Name the file and provide a description. (Optional)",
+            "Step 3: Wait for processing. Once completed, the survey information will be displayed."
         ]
 
         for step in use_steps:
-            tk.Label(scrollable_frame, text=step).pack(anchor="w", padx=40, pady=2)
+            tk.Label(scrollable_frame, text=step, bg="#e5e5e5",font=("Arial", 16)).pack(anchor="w", padx=40, pady=2)
 
         # Pack canvas and scrollbar
         canvas.pack(side="left", fill="both", expand=True)
@@ -303,8 +405,63 @@ def open_instruction_window():
 
         active_windows["instructionWindow"] = instructionWindow
 
+
     close_all_windows(active_windows["instructionWindow"])
     active_windows["instructionWindow"].deiconify()
+
+"""LOGOUT"""
+popup = None  # Global variable to track the popup window
+logged_in_email = ""
+
+def get_logged_in_email():
+    """Retrieve the logged-in email from Firestore."""
+    global logged_in_email
+    return logged_in_email if logged_in_email else "No User Logged In"
+
+def show_logout():
+    global popup
+
+    if popup and popup.winfo_exists():
+        popup.destroy()
+        popup = None
+    else:
+        popup = ctk.CTkToplevel(tk_root)
+        popup.geometry("220x120+1500+169")
+        popup.configure(fg_color="white")
+        popup.overrideredirect(True)
+
+        # Fetch the logged-in email
+        user_email = get_logged_in_email()
+
+        # Email Display
+        email_label = ctk.CTkLabel(popup, text=user_email, font=("Arial", 12), text_color="black")
+        email_label.pack(pady=(20, 10))
+
+        # Logout Button
+        logout_button = ctk.CTkButton(popup, text="Logout", fg_color="black", text_color="white",
+                                      hover_color="gray", command=logout)
+        logout_button.pack(pady=10)
+
+def logout():
+    global is_logged_in, logged_in_email
+
+    is_logged_in = False
+    logged_in_email = None
+
+    # Destroy all top-level windows to avoid conflicts
+    for window in list(active_windows.values()):
+        if window.winfo_exists():
+            print(f"Destroying top-level window: {window}")
+            window.destroy()
+
+    active_windows.clear()
+
+    # Hide all top-level windows and refresh navbar
+    tk_root.deiconify()
+    create_navigation_bar(tk_root)
+    tk_root.update()
+
+    messagebox.showinfo("Logged Out", "You have been successfully logged out.")
 
 """END HERE"""
 
@@ -333,7 +490,7 @@ def load_credentials():
 is_logged_in = False  
 
 def login(email_entry, password_entry, remember_var, parent_window):
-    global is_logged_in  
+    global is_logged_in, logged_in_email
 
     email = email_entry.get()
     password = password_entry.get()
@@ -350,22 +507,38 @@ def login(email_entry, password_entry, remember_var, parent_window):
             user_data = user.to_dict()
             if user_data["password"] == hashed_password:
                 if remember_var.get():
-                    save_credentials(email)  
+                    save_credentials(email)
 
                 messagebox.showinfo("Success", "Login successful!")
 
                 # Update login state
-                is_logged_in = True  
+                is_logged_in = True
+                logged_in_email = email
 
-                # Dynamically refresh navbar
-                create_navigation_bar(parent_window)  
+                # Destroy all top-level windows
+                for window in list(active_windows.values()):
+                    if window.winfo_exists():
+                        print(f"Closing window: {window}")
+                        window.destroy()
+
+                active_windows.clear()
+
+                # Ensure the main window is visible
+                tk_root.deiconify()
+                tk_root.lift()
+                tk_root.focus_force()
+
+                # Refresh the main window's navbar
+                create_navigation_bar(tk_root)
+                tk_root.update()
 
                 return
-        
+
         messagebox.showerror("Error", "Invalid email or password.")
 
     except Exception as e:
         messagebox.showerror("Error", f"Firestore error: {str(e)}")
+
 
 
 
@@ -678,7 +851,7 @@ def open_loading_screen(parent_window):
                             font=("Arial", 14, "italic"), text_color="white", fg_color="transparent")
     text_label.place(relx=0.5, rely=0.58, anchor="center")
 
-    create_navigation_bar(loading_window, loading_window) 
+    create_navigation_bar(loading_window) 
     # Close the loading screen after 5 seconds and show the survey result window
     def close_loading():
         if loading_window.winfo_exists():
@@ -734,7 +907,7 @@ def upload_file():
         desc_var.trace_add("write", validate_fields)
         phone_var.trace_add("write", validate_fields)
 
-        create_navigation_bar(survey_window, survey_window) 
+        create_navigation_bar(survey_window) 
         # Left Image Frame
         image_frame = ctk.CTkFrame(survey_window, width=500, height=500, fg_color="#ffffff")
         image_frame.pack(side="left", padx=50, pady=50)
@@ -803,7 +976,7 @@ def surveyResult():
     survey_result_window.configure(bg="#e5e5e5")
     center_window(survey_result_window, WIDTH, HEIGHT)
 
-    create_navigation_bar(survey_result_window, survey_result_window)
+    create_navigation_bar(survey_result_window)
 
     # Main Content Frame
     main_frame = ctk.CTkFrame(survey_result_window, fg_color="#e5e5e5")
