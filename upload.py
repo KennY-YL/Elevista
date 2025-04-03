@@ -4,12 +4,14 @@ from tkinter import filedialog
 import customtkinter as ctk
 from PIL import Image, ImageTk, ImageDraw
 from itertools import cycle
-from tkinter import messagebox
+from tkinter import messagebox,simpledialog
 import firebase_admin
 from firebase_admin import credentials, firestore
 import hashlib  # For password hashing
 import json
 import os
+from datetime import datetime
+
 
 
 
@@ -18,7 +20,7 @@ ctk.set_appearance_mode("white")
 ctk.set_default_color_theme("blue")
 
 # Set initial window size
-WIDTH, HEIGHT = 1200, 720
+WIDTH, HEIGHT = 1200, 650
 
 # Keep track of all open top-level windows
 open_windows = []
@@ -29,7 +31,6 @@ active_windows = {}
 cred = credentials.Certificate("elevista-1cae7-firebase-adminsdk-fbsvc-9a5b78dc69.json")
 firebase_admin.initialize_app(cred)
 db = firestore.client()
-
 
 
 
@@ -74,7 +75,7 @@ def create_navigation_bar(parent):
         parent.header_frame.destroy()
     
     # Create a new header frame and pack it at the top
-    parent.header_frame = ctk.CTkFrame(parent, height=70, fg_color="#0f0f0f")
+    parent.header_frame = tk.Frame(parent, height=70, bg="#0f0f0f")  # Use 'bg' instead of 'fg_color'
     parent.header_frame.pack(side="top", fill="x", pady=0)
 
     # Show "EleVista" text for top-level window, else show logo for main window
@@ -111,13 +112,13 @@ def create_navigation_bar(parent):
                                     corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=go_home)
             elif text == "surveys":
                 btn = ctk.CTkButton(parent.nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
-                                    corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=about_us_window)
+                                    corner_radius=5, hover_color="#09AAA3", width=120, height=40,command=open_survey_folder_window)
             elif text == "manual":
                 btn = ctk.CTkButton(parent.nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
                                     corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=open_instruction_window)
             elif text == "about us":
                 btn = ctk.CTkButton(parent.nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
-                                    corner_radius=5, hover_color="#09AAA3", width=120, height=40)
+                                    corner_radius=5, hover_color="#09AAA3", width=120, height=40,command=about_us_window)
             btn.pack(side="left", padx=10)
 
         # Add profile image button
@@ -134,13 +135,13 @@ def create_navigation_bar(parent):
                                     corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=go_home)
             elif text == "surveys":
                 btn = ctk.CTkButton(parent.nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
-                                    corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=about_us_window)
+                                    corner_radius=5, hover_color="#09AAA3", width=120, height=40,command=open_survey_folder_window)
             elif text == "manual":
                 btn = ctk.CTkButton(parent.nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
                                     corner_radius=5, hover_color="#09AAA3", width=120, height=40, command=open_instruction_window)
             elif text == "about us":
                 btn = ctk.CTkButton(parent.nav_frame, text=text, font=("Poppins", 20), fg_color="transparent", text_color="white",
-                                    corner_radius=5, hover_color="#09AAA3", width=120, height=40)
+                                    corner_radius=5, hover_color="#09AAA3", width=120, height=40,command=about_us_window)
             elif text == "LOGIN":
                 btn = ctk.CTkButton(parent.nav_frame, text=text, font=("Poppins", 20), fg_color="#09AAA3", text_color="white",
                                     corner_radius=5, width=120, height=40, command=show_login_window)
@@ -166,7 +167,9 @@ def about_us_window():
         aboutUs.geometry(f"{WIDTH}x{HEIGHT}")
         aboutUs.configure(bg="#e5e5e5")
         center_window(aboutUs, WIDTH, HEIGHT)
-
+        aboutUs.resizable(False, False)
+        aboutUs.overrideredirect(True)
+       
         # Create Navigation Bar
         create_navigation_bar(aboutUs)
 
@@ -234,6 +237,8 @@ def open_instruction_window():
         instructionWindow.configure(bg="#e5e5e5")
         instructionWindow.focus_set()
         center_window(instructionWindow, WIDTH, HEIGHT)
+        instructionWindow.resizable(False, False)
+        instructionWindow.overrideredirect(True)
 
         # Create Navigation Bar (implement this function as needed)
         create_navigation_bar(instructionWindow)
@@ -346,24 +351,25 @@ def open_instruction_window():
 
         # Navigation buttons
         btn_left = ctk.CTkButton(
-            instructionWindow, text="❮",
+            scrollable_frame, text="❮",
             command=lambda: smooth_scroll("left"),
             fg_color="#333333", hover_color="#555555",
             text_color="white",
             width=5, height=250,
             corner_radius=10, font=("Helvetica", 18, "bold")
         )
-        btn_left.place(x=170, y=250)
+        btn_left.place(x=170, y=180)
+    
 
         btn_right = ctk.CTkButton(
-            instructionWindow, text="❯",
+            scrollable_frame, text="❯",
             command=lambda: smooth_scroll("right"),
             fg_color="#333333", hover_color="#555555",
             text_color="white",
             width=5, height=250,
             corner_radius=10, font=("Helvetica", 18, "bold")
         )
-        btn_right.place(x=1001, y=250)
+        btn_right.place(x=1001, y=180)
 
         # Update canvas scroll region
         frame.update_idletasks()
@@ -762,6 +768,190 @@ def center_window(window, width, height):
     window.update()
 """END HERE"""
 
+"""SURVEY FOLDER"""
+def custom_input_dialog():
+    dialog = ctk.CTkToplevel()
+    dialog.title("Survey")
+   
+    dialog.geometry("300x175+800+300")
+    dialog.configure(fg_color="white")
+    dialog.resizable(False, False)
+    dialog.overrideredirect(True)
+
+    # Close Button (Top Right)
+    close_button = ctk.CTkButton(
+        dialog, text="✕", font=("Poppins", 14, "bold"),
+        fg_color="white", text_color="#00b3b3", width=30, height=30,
+        corner_radius=5, border_width=0, command=dialog.destroy
+    )
+    close_button.place(relx=1.0, x=-10, y=10, anchor="ne")  # Positions at the top-right
+
+    # Label
+    ctk.CTkLabel(dialog, text="Enter folder name:", font=("Poppins", 14), text_color="black").pack(pady=(40, 5))
+
+    # Entry Field
+    entry = ctk.CTkEntry(dialog, font=("Poppins", 12), width=200, fg_color="white", text_color="black")
+    entry.pack(pady=5)
+
+    result = ctk.StringVar()
+
+    def submit():
+        result.set(entry.get())
+        dialog.destroy()
+
+    # OK Button (Bottom Right)
+    submit_button = ctk.CTkButton(
+        dialog, text="OK", command=submit, font=("Arial", 14, "bold"),
+        fg_color="#00b3b3", text_color="white", corner_radius=5, width=70, height=30
+    )
+    submit_button.place(relx=1.0, rely=1.0, x=-15, y=-15, anchor="se")  # Bottom right positioning
+
+    dialog.grab_set()  # Make modal
+    dialog.wait_window()  # Wait until closed
+
+    return result.get()
+
+def add_survey():
+    folder_name = custom_input_dialog()
+    if folder_name:
+        folder_path = os.path.join(os.getcwd(), folder_name)
+        try:
+            os.makedirs(folder_path, exist_ok=True)
+
+            # Get current date & time
+            timestamp = datetime.now().strftime("%B %d, %Y | %I:%M %p")
+
+            # Create Folder Display Frame
+            folder_frame = tk.Frame(scrollable_frame, bg="#d3d3d3", padx=10, pady=5, height=200)
+            folder_frame.pack(fill="x", pady=5, padx=0)  # Stretches across the parent width
+            folder_frame.pack_propagate(False)
+
+                        # Load Image using Pillow
+            image_path = "Folder.png"  # Path to the uploaded image
+            image_pil = Image.open(image_path)
+            image_pil = image_pil.resize((150, 150), Image.Resampling.LANCZOS)
+            image = ImageTk.PhotoImage(image_pil)
+
+            # Add image to the left side
+            image_label = ctk.CTkLabel(folder_frame, image=image, text="")
+            image_label.image = image  # Keep a reference to avoid garbage collection
+            image_label.pack(side="left", padx=10)
+
+            # Folder Info
+            folder_info_frame = ctk.CTkFrame(folder_frame, fg_color="transparent")
+            folder_info_frame.pack(side="left", padx=10)
+
+            folder_label = ctk.CTkLabel(folder_info_frame, text=folder_name, font=("Poppins", 16, "bold"))
+            folder_label.grid(row=0, column=0, sticky="w")
+
+            edit_label = ctk.CTkLabel(folder_info_frame, text="edit", font=("Poppins", 14, "underline"), cursor="hand2")
+            edit_label.grid(row=0, column=1, sticky="w" )
+
+            file_count_label = ctk.CTkLabel(folder_info_frame, text="4 files", font=("Poppins", 14,"italic"))
+            file_count_label.grid(row=1, column=0, sticky="w")
+
+            timestamp = "April 5, 2025 | 9:05 AM"
+            time_label = ctk.CTkLabel(folder_info_frame, text=timestamp, font=("Poppins", 14,"italic"))
+            time_label.grid(row=2, column=0, sticky="w")
+
+            # Buttons Frame
+            button_frame = ctk.CTkFrame(folder_frame, fg_color="transparent")
+            button_frame.pack(side="bottom", anchor="se", padx=10, pady=10)
+
+            view_btn = ctk.CTkButton(button_frame, text="View", font=("Poppins", 14, "bold"), fg_color="#18a999", text_color="white", corner_radius=5)
+            view_btn.pack(side="left", padx=5)
+
+            delete_btn = ctk.CTkButton(button_frame, text="Delete", font=("Poppins", 14, "bold"), fg_color="#ff5252", text_color="white", corner_radius=5,
+                                        command=lambda: delete_survey(folder_frame, folder_path))
+            delete_btn.pack(side="left", padx=5)
+           
+            messagebox.showinfo("Survey", f"Folder '{folder_name}' created successfully!",parent=surveyFolder)
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not create folder:\n{str(e)}")
+
+# Function to delete survey folder
+def delete_survey(folder_widget, folder_path):
+    try:
+        os.rmdir(folder_path)  # Remove the empty folder
+        folder_widget.destroy()  # Remove from UI
+    except Exception as e:
+        messagebox.showerror("Error", f"Could not delete folder:\n{str(e)}")
+
+def open_survey_folder_window():
+    global scrollable_frame
+    global surveyFolder
+    if "surveyFolder" not in active_windows or not active_windows["surveyFolder"].winfo_exists():
+        # Create top-level window
+        tk_root.withdraw()
+        surveyFolder = ctk.CTkToplevel(tk_root)
+        surveyFolder.title("Survey Folder")
+        surveyFolder.geometry(f"{WIDTH}x{HEIGHT}")
+        surveyFolder.configure(bg="#e5e5e5")
+        center_window(surveyFolder, WIDTH, HEIGHT)
+        surveyFolder.resizable(False, False)
+        # surveyFolder.overrideredirect(True)
+       
+        # Create Navigation Bar
+        create_navigation_bar(surveyFolder)
+        screen_width =surveyFolder.winfo_screenwidth()
+        print(screen_width)
+       
+
+        add_folder_frame = ctk.CTkFrame(surveyFolder, fg_color="#d3d3d3", height=100, corner_radius=0,width=screen_width)
+        add_folder_frame.pack(fill="x", padx=0, pady=10)
+        add_folder_frame.pack_propagate(False)  # Prevent shrinking
+
+        # Plus Button (Styled)
+        plus_btn = ctk.CTkButton(
+            add_folder_frame, text="+", font=("Poppins", 28, "bold"),
+            width=50, height=50, fg_color="white", text_color="black",
+            hover_color="#bfbfbf", corner_radius=10,
+            command=add_survey
+        )
+        plus_btn.pack(side="left", padx=20, pady=10)
+
+        # Add Survey Label (Styled as Button)
+        add_folder_label = ctk.CTkButton(
+            add_folder_frame, text="Add new survey folder", font=("Poppins", 18, "bold"),
+            fg_color="#d3d3d3", text_color="black", hover_color="#bfbfbf",
+            border_width=0, corner_radius=10, command=add_survey
+        )
+        add_folder_label.pack(side="left", padx=10)
+
+        # ---- Scrollable Frame for Survey Folders ---- #
+        surveyFolderFrame = ctk.CTkFrame(surveyFolder, fg_color="#e5e5e5")
+        surveyFolderFrame.pack(fill="both", expand=True)
+
+        canvas = tk.Canvas(surveyFolderFrame, bg="#e5e5e5", highlightthickness=0)
+        scrollbar = ctk.CTkScrollbar(surveyFolderFrame, orientation="vertical", command=canvas.yview)
+        scrollable_frame = ctk.CTkFrame(canvas, fg_color="#e5e5e5")
+
+        # Make sure scrollable frame stretches across the canvas width
+        def update_frame_width(event):
+            canvas_width = event.width
+            scrollable_frame.configure(width=canvas_width)
+            canvas.itemconfig(frame_window, width=canvas_width)
+
+        canvas.bind("<Configure>", update_frame_width)
+
+        frame_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+
+        scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        active_windows["surveyFolder"] = surveyFolder
+
+    close_all_windows(active_windows["surveyFolder"])
+    active_windows["surveyFolder"].deiconify()
+"""END HERE"""
+
+
+
+
 
 """MAIN WINDOW"""
 # Create main window
@@ -769,9 +959,11 @@ tk_root = ctk.CTk()
 tk_root.title("EleVista")
 tk_root.geometry(f"{WIDTH}x{HEIGHT}")
 tk_root.iconbitmap("LOGO.ico")
+tk_root.resizable(False, False)
 
 # Center main window
 center_window(tk_root, WIDTH, HEIGHT)
+# tk_root.overrideredirect(True)
 
 # Load background image
 bg_image = Image.open("HomeBackground.png")
@@ -804,6 +996,9 @@ def open_loading_screen(parent_window):
     
     # Center the loading window
     center_window(loading_window, WIDTH, HEIGHT)
+   
+    loading_window.resizable(False, False)
+    loading_window.overrideredirect(True)
     
     # Disable survey window while loading is active
     parent_window.withdraw()
@@ -889,6 +1084,8 @@ def upload_file():
 
         survey_window.configure(bg="#e5e5e5")  
         center_window(survey_window, WIDTH, HEIGHT)
+        survey_window.resizable(False, False)
+        survey_window.overrideredirect(True)
 
         # Variables to track inputs
         title_var = tk.StringVar()
@@ -975,15 +1172,16 @@ def surveyResult():
     survey_result_window.geometry(f"{WIDTH}x{HEIGHT}")
     survey_result_window.configure(bg="#e5e5e5")
     center_window(survey_result_window, WIDTH, HEIGHT)
-
+    survey_result_window.resizable(False, False)
+    survey_result_window.overrideredirect(True)
     create_navigation_bar(survey_result_window)
 
     # Main Content Frame
-    main_frame = ctk.CTkFrame(survey_result_window, fg_color="#e5e5e5")
+    main_frame = ctk.CTkFrame(survey_result_window, fg_color="transparent")
     main_frame.pack(pady=40, padx=20, fill="both", expand=True)
 
     # Left - Image Frame
-    img_frame = ctk.CTkFrame(main_frame, fg_color="black", width=350, height=350)
+    img_frame = ctk.CTkFrame(main_frame, fg_color="transparent", width=350, height=350)
     img_frame.pack(side="left", padx=40)
 
     try:
@@ -996,7 +1194,7 @@ def surveyResult():
         print("Image not found. Ensure 'checkerboard.png' exists.")
 
     # Right - Survey Details
-    details_frame = ctk.CTkFrame(main_frame, fg_color="#e5e5e5")
+    details_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
     details_frame.pack(side="left", padx=20)
 
     # Title and Time
@@ -1007,7 +1205,7 @@ def surveyResult():
     date_label.pack(anchor="w")
 
     # Location
-    location_frame = ctk.CTkFrame(details_frame, fg_color="#e5e5e5")
+    location_frame = ctk.CTkFrame(details_frame, fg_color="transparent")
     location_frame.pack(anchor="w", pady=5)
 
     bullet_label = ctk.CTkLabel(location_frame, text="●", font=("Arial", 12), text_color="#333333")
@@ -1020,14 +1218,16 @@ def surveyResult():
     edit_label.pack(side="left")
 
     # Description
-    desc_label = ctk.CTkLabel(details_frame, text="Description:", font=("Arial", 12, "bold"), text_color="#333333")
-    desc_label.pack(anchor="w", pady=(10, 5))
+    desc_label_frame = ctk.CTkFrame(details_frame, fg_color="transparent", width=350)
+    desc_label_frame.pack(anchor="w", pady=3, fill="x", expand=True)
 
-    desc_textbox = ctk.CTkTextbox(details_frame, width=350, height=100, fg_color="white", border_color="#ccc")
+    desc_label = ctk.CTkLabel(desc_label_frame, text="Description:", font=("Arial", 12, "bold"), text_color="#333333")
+    desc_label.pack(side="left", pady=(10, 3))
+    desc_edit_label = ctk.CTkLabel(desc_label_frame, text="edit", font=("Arial", 10, "underline"), text_color="#555555", cursor="hand2")
+    desc_edit_label.pack(side="right", pady=3)
+
+    desc_textbox = ctk.CTkTextbox(details_frame, width=350, height=100, fg_color="white", border_color="#e5e5e5")
     desc_textbox.pack()
-
-    desc_edit_label = ctk.CTkLabel(details_frame, text="edit", font=("Arial", 10, "underline"), text_color="#555555", cursor="hand2")
-    desc_edit_label.pack(anchor="w", pady=5)
 
     # Survey Metrics
     metrics = [
@@ -1038,11 +1238,59 @@ def surveyResult():
     ]
 
     for label_text, value in metrics:
-        label = ctk.CTkLabel(details_frame, text=f"{label_text}", font=("Arial", 12, "bold"), text_color="#333333")
-        label.pack(anchor="w", pady=2)
+        frame = ctk.CTkFrame(details_frame, fg_color="transparent")
+        frame.pack(anchor="w", pady=2, fill="x")
         
-        value_label = ctk.CTkLabel(details_frame, text=value, font=("Arial", 12), text_color="#333333")
-        value_label.pack(anchor="w")
+        label = ctk.CTkLabel(frame, text=label_text, font=("Arial", 12, "bold"), text_color="#333333")
+        label.pack(side="left", padx=(0, 10))  # Adds some space between label and value
+        
+        value_label = ctk.CTkLabel(frame, text=value, font=("Arial", 12), text_color="#333333")
+        value_label.pack(side="left")
+    def popup_save():
+        popup = ctk.CTkToplevel(tk_root)
+        popup.geometry("200x125+800+500")
+        popup.configure(fg_color="white")
+        popup.overrideredirect(True)
+
+        # Close Button (Top Right)
+        close_button = ctk.CTkButton(
+            popup, text="X", font=("Poppins", 14, "bold"),
+            fg_color="white", text_color="#00b3b3", width=30, height=30,
+            corner_radius=0, border_width=0, command=popup.destroy
+        )
+        close_button.place(relx=1.0, x=-5, y=5, anchor="ne")  # Positions at the top-right
+
+        # New Button
+        new_button = ctk.CTkButton(
+            popup, text="Save to New Folder", fg_color="white", text_color="black",
+            hover_color="#1abc9c", command=logout
+        )
+        new_button.pack(pady=(40, 5))  # Adjust padding so it's not too close to the close button
+
+        # Existing Button
+        existing_button = ctk.CTkButton(
+            popup, text="Save to Existing Folder", fg_color="white", text_color="black",
+            hover_color="#1abc9c", command=logout
+        )
+        existing_button.pack(pady=5)
+
+    # Create a bottom frame for the button
+    button_frame = ctk.CTkFrame(survey_result_window, fg_color="transparent")
+    button_frame.pack(side="bottom", fill="x", pady=20, padx=20, anchor="se")
+
+    # Save button
+    save_button = ctk.CTkButton(button_frame, text="SAVE", fg_color="#1abc9c", 
+                                text_color="white", hover_color="#16a085",command=popup_save)
+    save_button.pack(side="right", padx=10)
+
+
+    def delTemp():
+        messagebox.showinfo("Deleted","You have deleted!")
+        go_home()
+
+    delete_button = ctk.CTkButton(button_frame, text="DELETE", fg_color="#1abc9c", 
+                                text_color="white", hover_color="#16a085",command=delTemp)
+    delete_button.pack(side="right", padx=20)
 """ENDS HERE"""
    
 
