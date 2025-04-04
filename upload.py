@@ -11,7 +11,7 @@ import hashlib  # For password hashing
 import json
 import os
 from datetime import datetime
-
+import shutil
 
 
 
@@ -830,8 +830,9 @@ def add_survey():
 
 def delete_survey(folder_widget, folder_path):
     try:
-        os.rmdir(folder_path)  # Remove the empty folder
-        folder_widget.destroy()  # Remove from UI
+        shutil.rmtree(folder_path)  # Recursively delete the folder and its contents
+        folder_widget.destroy()     # Remove from UI
+        messagebox.showinfo("Deleted", "Folder deleted successfully!")
     except Exception as e:
         messagebox.showerror("Error", f"Could not delete folder:\n{str(e)}")
 
@@ -866,7 +867,9 @@ def display_folder(folder_name):
     file_count_label = ctk.CTkLabel(folder_info_frame, text=f"{len(os.listdir(folder_path))} files", font=("Poppins", 14, "italic"))
     file_count_label.grid(row=1, column=0, sticky="w")
 
-    timestamp = datetime.now().strftime("%B %d, %Y | %I:%M %p")
+    # Folder creation timestamp
+    creation_time = os.path.getctime(folder_path)
+    timestamp = datetime.fromtimestamp(creation_time).strftime("%B %d, %Y | %I:%M %p")
     time_label = ctk.CTkLabel(folder_info_frame, text=timestamp, font=("Poppins", 14, "italic"))
     time_label.grid(row=2, column=0, sticky="w")
 
@@ -1223,7 +1226,7 @@ def upload_file():
         survey_window.configure(bg="#e5e5e5")  
         center_window(survey_window, WIDTH, HEIGHT)
         survey_window.resizable(False, False)
-        survey_window.overrideredirect(True)
+        # survey_window.overrideredirect(True)
 
         # Variables to track inputs
         title_var = tk.StringVar()
@@ -1387,6 +1390,63 @@ def surveyResult():
 
 
 
+    def save_to_new_survey_folder():
+    # Ask user to name the new survey folder
+        folder_name = custom_input_dialog()
+
+        if folder_name:
+            new_folder_path = os.path.join(SURVEY_DIR, folder_name)
+
+            # Check if the folder already exists
+            if os.path.exists(new_folder_path):
+                messagebox.showerror("Error", "A folder with this name already exists.")
+                return
+
+            try:
+                os.makedirs(new_folder_path)
+
+                # Once folder is created, save survey just like your existing function
+                date = date_label.cget("text").strip()
+                location = location_label.cget("text").strip()
+                description = desc_textbox.get("1.0", tk.END).strip()
+
+                if not date or not location or not description:
+                    messagebox.showwarning("Warning", "Please ensure all fields are filled before saving.")
+                    return
+
+                # Survey Metrics (you can make this dynamic later)
+                metrics = {
+                    "Horizontal Distance": "N/A",
+                    "Vertical Angle": "N/A",
+                    "Slope": "N/A",
+                    "Elevation": "N/A"
+                }
+
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                file_path = os.path.join(new_folder_path, f"survey_{timestamp}.txt")
+
+                # Ensure unique file name
+                counter = 1
+                while os.path.exists(file_path):
+                    file_path = os.path.join(new_folder_path, f"survey_{timestamp}_{counter}.txt")
+                    counter += 1
+
+                # Save details to the file
+                with open(file_path, "w") as file:
+                    file.write(f"Date: {date}\n")
+                    file.write(f"Location: {location}\n")
+                    file.write(f"Description:\n{description}\n\n")
+                    file.write("Survey Metrics:\n")
+                    for key, value in metrics.items():
+                        file.write(f"- {key}: {value}\n")
+
+                messagebox.showinfo("Success", f"Survey saved in new folder:\n{new_folder_path}")
+            
+            except Exception as e:
+                messagebox.showerror("Error", f"Could not create/save to folder:\n{str(e)}")
+
+        else:
+            messagebox.showwarning("Cancelled", "Folder creation cancelled.")
 
     def save_survey_details():
         folder_selected = filedialog.askdirectory(initialdir=SURVEY_DIR, title="Select an Existing Survey Folder")
@@ -1450,12 +1510,15 @@ def surveyResult():
         )
         close_button.place(relx=1.0, x=-5, y=5, anchor="ne")  # Positions at the top-right
 
-        # New Button
+        def save_new_and_close():
+            popup.destroy()
+            save_to_new_survey_folder()
+
         new_button = ctk.CTkButton(
-            popup, text="Save to New Folder", fg_color="white", text_color="black",
-            hover_color="#1abc9c", command=logout
-        )
-        new_button.pack(pady=(40, 5))  # Adjust padding so it's not too close to the close button
+        popup, text="Save to New Folder", fg_color="white", text_color="black",
+        hover_color="#1abc9c", command=save_new_and_close
+    )
+        new_button.pack(pady=(40, 5))
 
         # Existing Button
         existing_button = ctk.CTkButton(
