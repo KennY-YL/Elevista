@@ -1300,7 +1300,6 @@ upload_btn.place(relx=0.5, rely=0.6, anchor="center")
 """ENDS HERE"""
 
 
-
 """SURVEY RESULT WINDOW"""
 def surveyResult():
     if not tk_root.winfo_exists():
@@ -1440,13 +1439,31 @@ def surveyResult():
                     for key, value in metrics.items():
                         file.write(f"- {key}: {value}\n")
 
-                messagebox.showinfo("Success", f"Survey saved in new folder:\n{new_folder_path}")
-            
+                # Check if the user is logged in
+                if is_logged_in:
+                    # Save to Firestore
+                    db.collection("surveys").add({
+                        "user_email": logged_in_email,
+                        "file_path": file_path,
+                        "folder_name": os.path.basename(new_folder_path),
+                        "date": date,
+                        "location": location,
+                        "description": description,
+                        "metrics": metrics,
+                        "timestamp": firestore.SERVER_TIMESTAMP
+                    })
+                    messagebox.showinfo("Success", f"Survey saved in new folder:\n{new_folder_path} and also in the database.")
+                else:
+                    messagebox.showinfo("Success", f"Survey saved locally in:\n{new_folder_path}.")
+
             except Exception as e:
                 messagebox.showerror("Error", f"Could not create/save to folder:\n{str(e)}")
 
         else:
             messagebox.showwarning("Cancelled", "Folder creation cancelled.")
+
+
+
 
     def save_survey_details():
         folder_selected = filedialog.askdirectory(initialdir=SURVEY_DIR, title="Select an Existing Survey Folder")
@@ -1490,12 +1507,28 @@ def surveyResult():
                     for key, value in metrics.items():
                         file.write(f"- {key}: {value}\n")
 
-                messagebox.showinfo("Success", f"Survey details saved in: {file_path}")
+                # Check if the user is logged in
+                if is_logged_in:
+                    # Save to Firestore
+                    db.collection("surveys").add({
+                        "user_email": logged_in_email,
+                        "file_path": file_path,
+                        "folder_name": os.path.basename(folder_selected),
+                        "date": date,
+                        "location": location,
+                        "description": description,
+                        "metrics": metrics,
+                        "timestamp": firestore.SERVER_TIMESTAMP
+                    })
+                    messagebox.showinfo("Success", f"Survey details saved in: {file_path} and also in the database.")
+                else:
+                    messagebox.showinfo("Success", f"Survey details saved locally in: {file_path}.")
+
             except Exception as e:
                 messagebox.showerror("Error", f"Could not save file:\n{str(e)}")
         else:
             messagebox.showwarning("Warning", "No folder selected. Please select a folder.")
-        
+
     def popup_save():
         popup = ctk.CTkToplevel(tk_root)
         popup.geometry("200x125+800+500")
@@ -1546,7 +1579,6 @@ def surveyResult():
     delete_button.pack(side="right", padx=20)
 """ENDS HERE"""
    
-
 
 # Run Application
 tk_root.mainloop()
