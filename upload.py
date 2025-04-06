@@ -33,6 +33,18 @@ firebase_admin.initialize_app(cred)
 db = firestore.client()
 
 SURVEY_DIR = os.path.join(os.path.expanduser("~"), "Documents", "Surveys")
+
+def test_firestore_connection():
+    try:
+        surveys_ref = db.collection("surveys").limit(1).stream()  # Fetch a single document
+        for survey in surveys_ref:
+            print(f"Document ID: {survey.id}, Data: {survey.to_dict()}")
+    except Exception as e:
+        print(f"Error testing Firestore connection: {str(e)}")
+
+# Call this function to test the connection
+test_firestore_connection()
+
 # Loads and displays existing survey folders
 if not os.path.exists(SURVEY_DIR):
     os.makedirs(SURVEY_DIR)  # Ensure the directory exists
@@ -74,7 +86,6 @@ def go_home():
 """NAV BAR FOR THE TOP LEVEL WINDOWS"""
 def create_navigation_bar(parent):
     if hasattr(parent, "header_frame") and parent.header_frame.winfo_exists():
-        print(f"Destroying old header_frame in {parent}")
         parent.header_frame.destroy()
     
     # Create a new header frame and pack it at the top
@@ -103,7 +114,6 @@ def create_navigation_bar(parent):
     # Create new Navigation Frame
     parent.nav_frame = ctk.CTkFrame(parent.header_frame, fg_color="transparent")
     parent.nav_frame.pack(side="right", padx=20, pady=15)
-    print(f"Created new nav_frame for {parent}")  # Debugging print
 
     # Show Profile Button if Logged In, else show Login & Sign-Up
     nav_buttons = ["home", "surveys", "manual", "about us", "LOGIN", "SIGN UP"]
@@ -157,7 +167,7 @@ def create_navigation_bar(parent):
 
     parent.header_frame.lift()
     parent.update_idletasks()
-    print(f"Created new header_frame in {parent} with children: {[w for w in parent.winfo_children()]}")
+    
 """END HERE"""
 
 """ABOUT US WINDOW"""
@@ -537,6 +547,8 @@ def login(email_entry, password_entry, remember_var, parent_window):
                 tk_root.lift()
                 tk_root.focus_force()
 
+            
+
                 # Refresh the main window's navbar
                 create_navigation_bar(tk_root)
                 tk_root.update()
@@ -772,6 +784,7 @@ def center_window(window, width, height):
 """END HERE"""
 
 """SURVEY FOLDER"""
+scrollable_frame = None 
 def custom_input_dialog():
     dialog = ctk.CTkToplevel()
     dialog.title("Survey")
@@ -815,16 +828,118 @@ def custom_input_dialog():
     return result.get()
 
 
+def open_survey_folder_window():
+    global scrollable_frame, surveyFolder  # Declare it as global to modify it
 
+    # Check if the surveyFolder window is already open
+    if "surveyFolder" in active_windows and active_windows["surveyFolder"].winfo_exists():
+        # If it exists, destroy it to refresh
+        active_windows["surveyFolder"].destroy()
+
+    # Create a new surveyFolder window
+    tk_root.withdraw()
+    surveyFolder = ctk.CTkToplevel(tk_root)
+    surveyFolder.title("Survey Folder")
+    surveyFolder.geometry(f"{WIDTH}x{HEIGHT}")
+    surveyFolder.configure(bg="#e5e5e5")
+    center_window(surveyFolder, WIDTH, HEIGHT)
+    surveyFolder.resizable(False, False)
+    surveyFolder.focus_set()
+
+    create_navigation_bar(surveyFolder)
+    screen_width = surveyFolder.winfo_screenwidth()
+
+    add_folder_frame = ctk.CTkFrame(surveyFolder, fg_color="#d3d3d3", height=100, corner_radius=0, width=screen_width)
+    add_folder_frame.pack(fill="x", pady=10)
+    add_folder_frame.pack_propagate(False)
+
+    plus_btn = ctk.CTkButton(
+        add_folder_frame, text="+", font=("Poppins", 28, "bold"),
+        width=50, height=50, fg_color="white", text_color="black",
+        hover_color="#bfbfbf", corner_radius=10,
+        command=add_survey
+    )
+    plus_btn.pack(side="left", padx=20, pady=10)
+
+    add_folder_label = ctk.CTkButton(
+        add_folder_frame, text="Add new survey folder", font=("Poppins", 18, "bold"),
+        fg_color="#d3d3d3", text_color="black", hover_color="#bfbfbf",
+        border_width=0, corner_radius=10, command=add_survey
+    )
+    add_folder_label.pack(side="left", padx=10)
+
+    surveyFolderFrame = ctk.CTkFrame(surveyFolder, fg_color="#e5e5e5")
+    surveyFolderFrame.pack(fill="both", expand=True)
+
+    canvas = tk.Canvas(surveyFolderFrame, bg="#e5e5e5", highlightthickness=0)
+    scrollbar = ctk.CTkScrollbar(surveyFolderFrame, orientation="vertical", command=canvas.yview)
+    scrollable_frame = ctk.CTkFrame(canvas, fg_color="#e5e5e5")
+
+    def update_frame_width(event):
+        canvas_width = event.width
+        scrollable_frame.configure(width=canvas_width)
+        canvas.itemconfig(frame_window, width=canvas_width)
+
+    canvas.bind("<Configure>", update_frame_width)
+    frame_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+
+    scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+    canvas.configure(yscrollcommand=scrollbar.set)
+
+    canvas.pack(side="left", fill="both", expand=True)
+    scrollbar.pack(side="right", fill="y")
+
+    # Check if the user is logged in
+    if is_logged_in:
+        # Fetch survey folders from Firestore
+        fetch_survey_folders_from_firebase()  # Fetch and display folders from Firestore
+    else:
+        # Load existing surveys from local directory
+        load_existing_surveys()  # Load and display existing surveys
+
+    active_windows["surveyFolder"] = surveyFolder
+    close_all_windows(active_windows["surveyFolder"])
+
+    # Bring the new window to the front
+    surveyFolder.deiconify()
 
 def add_survey():
     folder_name = custom_input_dialog()
     if folder_name:
+        # Create the folder locally first
         folder_path = os.path.join(SURVEY_DIR, folder_name)
         try:
+            if os.path.exists(folder_path):
+                messagebox.showerror("Error", f"A folder with the name '{folder_name}' already exists locally.")
+                return
+
             os.makedirs(folder_path, exist_ok=True)
             display_folder(folder_name)  # Display newly created folder
-            messagebox.showinfo("Survey", f"Folder '{folder_name}' created successfully!", parent=surveyFolder)
+
+            if is_logged_in:
+                # Check if the folder name already exists in Firestore
+                try:
+                    surveys_ref = db.collection("survey_folders").where("folder_name", "==", folder_name).where("user_email", "==", logged_in_email).stream()
+                    existing_folders = list(surveys_ref)
+
+                    if existing_folders:
+                        messagebox.showerror("Error", f"A folder with the name '{folder_name}' already exists in Firebase.")
+                        # Remove the locally created folder since it wasn't created in Firestore
+                        shutil.rmtree(folder_path)
+                        return
+
+                    # If the folder name is not in use, create a new folder in Firestore
+                    db.collection("survey_folders").add({
+                        "user_email": logged_in_email,
+                        "folder_name": folder_name,
+                        "timestamp": firestore.SERVER_TIMESTAMP
+                    })
+                    messagebox.showinfo("Survey", f"Folder '{folder_name}' created successfully in Firebase!", parent=surveyFolder)
+                except Exception as e:
+                    messagebox.showerror("Error", f"Could not create folder in Firebase:\n{str(e)}")
+            else:
+                messagebox.showinfo("Survey", f"Folder '{folder_name}' created successfully locally!", parent=surveyFolder)
+
         except Exception as e:
             messagebox.showerror("Error", f"Could not create folder:\n{str(e)}")
 
@@ -836,7 +951,36 @@ def delete_survey(folder_widget, folder_path):
     except Exception as e:
         messagebox.showerror("Error", f"Could not delete folder:\n{str(e)}")
 
+def fetch_survey_folders_from_firebase():
+    """Fetch survey folders from Firestore if the user is logged in."""
+    if is_logged_in:
+        try:
+            print(f"Fetching folders for user: {logged_in_email}")  # Debugging print
+            surveys_ref = db.collection("survey_folders").where("user_email", "==", logged_in_email).stream()
+            survey_folders = {}
+
+            for survey in surveys_ref:
+                survey_data = survey.to_dict()
+                folder_name = survey_data.get("folder_name", "Unknown")
+                print(f"Found folder: {folder_name}")  # Debugging print
+                if folder_name not in survey_folders:
+                    survey_folders[folder_name] = []
+                survey_folders[folder_name].append(survey_data)
+
+            # Display the fetched survey folders
+            for folder_name in survey_folders.keys():
+                display_folder(folder_name)  # Display folder in the UI
+
+        except Exception as e:
+            print(f"Error fetching folders: {str(e)}")  # Print the error for debugging
+            messagebox.showerror("Error", f"Could not fetch survey folders from Firestore:\n{str(e)}")
+    else:
+        # If not logged in, load local surveys
+        load_existing_surveys()
+
 def display_folder(folder_name):
+
+    global scrollable_frame
     """Displays a folder in the survey window."""
     folder_path = os.path.join(SURVEY_DIR, folder_name)
 
@@ -864,25 +1008,19 @@ def display_folder(folder_name):
     edit_label = ctk.CTkLabel(folder_info_frame, text="edit", font=("Poppins", 14, "underline"), cursor="hand2")
     edit_label.grid(row=0, column=1, sticky="w")
 
-    file_count_label = ctk.CTkLabel(folder_info_frame, text=f"{len(os.listdir(folder_path))} files", font=("Poppins", 14, "italic"))
-    file_count_label.grid(row=1, column=0, sticky="w")
-
-    # Folder creation timestamp
-    creation_time = os.path.getctime(folder_path)
-    timestamp = datetime.fromtimestamp(creation_time).strftime("%B %d, %Y | %I:%M %p")
-    time_label = ctk.CTkLabel(folder_info_frame, text=timestamp, font=("Poppins", 14, "italic"))
-    time_label.grid(row=2, column=0, sticky="w")
-
     # Buttons Frame
     button_frame = ctk.CTkFrame(folder_frame, fg_color="transparent")
     button_frame.pack(side="bottom", anchor="se", padx=10, pady=10)
 
-    view_btn = ctk.CTkButton(button_frame, text="View", font=("Poppins", 14, "bold"), fg_color="#18a999", text_color="white", corner_radius=5,command=lambda: view_survey_files(folder_name))
+    view_btn = ctk.CTkButton(button_frame, text="View", font=("Poppins", 14, "bold"), fg_color="#18a999", text_color="white", corner_radius=5,
+                              command=lambda: view_survey_files(folder_name))  # Pass folder name to view function
     view_btn.pack(side="left", padx=5)
 
     delete_btn = ctk.CTkButton(button_frame, text="Delete", font=("Poppins", 14, "bold"), fg_color="#ff5252", text_color="white", corner_radius=5,
                                 command=lambda: delete_survey(folder_frame, folder_path))
     delete_btn.pack(side="left", padx=5)
+
+
 
 def load_existing_surveys():
     folders = [f for f in os.listdir(SURVEY_DIR) if os.path.isdir(os.path.join(SURVEY_DIR, f))]
@@ -932,15 +1070,104 @@ def parse_survey_file(file_path):
 
     return details
 
+def display_fetched_surveys(surveys, scrollable_frames):
+    """Display fetched surveys in the scrollable frame."""
+    if not surveys:
+        empty_label = ctk.CTkLabel(scrollable_frames, text="No surveys found.", font=("Poppins", 16, "italic"))
+        empty_label.pack(pady=10)
+
+
+    for survey in surveys:
+        file_frame = ctk.CTkFrame(scrollable_frames, fg_color="white", corner_radius=10)
+        file_frame.pack(fill="x", padx=10, pady=8)
+
+        # Top header row with title, date, and menu button
+        header_frame = ctk.CTkFrame(file_frame, fg_color="transparent")
+        header_frame.pack(fill="x", padx=10, pady=(10, 5))
+
+        survey_title = ctk.CTkLabel(header_frame, text="Survey", font=("Poppins", 20, "bold"))
+        survey_title.pack(side="left", anchor="w")
+
+        menu_btn = ctk.CTkButton(header_frame, text="⋮", width=30, fg_color="white", text_color="black", corner_radius=5)
+        menu_btn.pack(side="right")
+
+        # Content area (address, datetime, image, and metrics)
+        content_frame = ctk.CTkFrame(file_frame, fg_color="transparent")
+        content_frame.pack(fill="x", padx=10, pady=10)
+
+        # Ensure 5 columns for alignment
+        for col in range(5):
+            content_frame.grid_columnconfigure(col, weight=1)
+
+        # Address (aligned with Elevation/Slope)
+        address_label = ctk.CTkLabel(content_frame, text="Address", font=("Poppins", 12))
+        address_label.grid(row=0, column=1, sticky="w", padx=10)
+
+        # Corrected access to survey data
+        location_label = ctk.CTkLabel(content_frame, text=survey["location"], font=("Poppins", 16, "bold", "italic"))
+        location_label.grid(row=1, column=1, sticky="w", padx=10)
+
+        # Date and Time (aligned with Elevation/Slope)
+        datetime_label = ctk.CTkLabel(content_frame, text="Date and Time", font=("Poppins", 12))
+        datetime_label.grid(row=0, column=3, sticky="w", padx=10)
+
+        datetime_value = ctk.CTkLabel(content_frame, text=survey["date"], font=("Poppins", 16, "bold", "italic"))
+        datetime_value.grid(row=1, column=3, sticky="w", padx=10)
+
+        # Image on the left (aligned with description/metrics)
+        image_path = "Folder.png"
+        image_pil = Image.open(image_path).resize((250, 250), Image.Resampling.LANCZOS)
+        image = ImageTk.PhotoImage(image_pil)
+        image_label = ctk.CTkLabel(content_frame, image=image, text="")
+        image_label.image = image
+        image_label.grid(row=0, column=0, rowspan=4, padx=10, sticky="n")
+
+        # Description
+        desc_label = ctk.CTkLabel(content_frame, text="Description:", font=("Poppins", 11, "bold"))
+        desc_label.grid(row=2, column=1, sticky="w", padx=(10, 2))
+        desc_text = ctk.CTkLabel(content_frame, text=survey["description"], font=("Poppins", 11), anchor="w")
+        desc_text.grid(row=2, column=2, columnspan=3, sticky="ew")
+
+        # Metrics (start from row 3 to avoid clashing with address/date)
+        metrics = survey.get("metrics", {})
+
+        # Retrieve each metric with the 'get' method (this will return "N/A" if the key doesn't exist)
+        metric_labels = [
+            ("Elevation :", metrics.get("Elevation", "N/A")),
+            ("Slope:", metrics.get("Slope", "N/A")),
+            ("Horizontal Distance:", metrics.get("Horizontal Distance", "N/A")),
+            ("Vertical Angle:", metrics.get("Vertical Angle", "N/A"))
+        ]
+
+        # First row of metrics (Elevation + Slope)
+        elev_label = ctk.CTkLabel(content_frame, text=metric_labels[0][0], font=("Poppins", 11, "bold"))
+        elev_label.grid(row=3, column=1, sticky="w", padx=10)
+        elev_val = ctk.CTkLabel(content_frame, text=metric_labels[0][1], font=("Poppins", 11))
+        elev_val.grid(row=3, column=2, sticky="w")
+
+        slope_label = ctk.CTkLabel(content_frame, text=metric_labels[1][0], font=("Poppins", 11, "bold"))
+        slope_label.grid(row=3, column=3, sticky="w", padx=(20, 2))
+        slope_val = ctk.CTkLabel(content_frame, text=metric_labels[1][1], font=("Poppins", 11))
+        slope_val.grid(row=3, column=4, sticky="w")
+
+        # Second row of metrics (Horizontal Distance + Vertical Angle)
+        hdist_label = ctk.CTkLabel(content_frame, text=metric_labels[2][0], font=("Poppins", 11, "bold"))
+        hdist_label.grid(row=4, column=1, sticky="w", padx=10)
+        hdist_val = ctk.CTkLabel(content_frame, text=metric_labels[2][1], font=("Poppins", 11))
+        hdist_val.grid(row=4, column=2, sticky="w")
+
+        vangle_label = ctk.CTkLabel(content_frame, text=metric_labels[3][0], font=("Poppins", 11, "bold"))
+        vangle_label.grid(row=4, column=3, sticky="w", padx=(20, 2))
+        vangle_val = ctk.CTkLabel(content_frame, text=metric_labels[3][1], font=("Poppins", 11))
+        vangle_val.grid(row=4, column=4, sticky="w")
+
+
+   
+
+    
 def view_survey_files(folder_name):
     """Displays all text files in the selected folder dynamically."""
-    folder_path = os.path.join(SURVEY_DIR, folder_name)
-
-    # Destroy previous window if it exists to prevent data leakage
-    if "view_window" in active_windows and active_windows["view_window"].winfo_exists():
-        active_windows["view_window"].destroy()
-
-    tk_root.withdraw()
+    # Create the view window
     view_window = ctk.CTkToplevel(tk_root)
     view_window.title(f"Surveys in {folder_name}")
     view_window.geometry(f"{WIDTH}x{HEIGHT}")
@@ -950,144 +1177,158 @@ def view_survey_files(folder_name):
 
     create_navigation_bar(view_window)
 
-    # Scrollable Frame
-    scrollable_frame = ctk.CTkFrame(view_window, fg_color="transparent")
-    scrollable_frame.pack(fill="both", expand=True, padx=10, pady=10)
+    # Create a canvas and a scrollbar for scrolling
+    canvas = ctk.CTkCanvas(view_window, bg="#e5e5e5", highlightthickness=0)
+    scrollbar = ctk.CTkScrollbar(view_window, orientation="vertical", command=canvas.yview)
 
-    # List all text files in the folder
-    files = [f for f in os.listdir(folder_path) if f.endswith(".txt")]
+    # Create the scrollable frame inside the canvas
+    scrollable_frames = ctk.CTkFrame(canvas, fg_color="#e5e5e5")
 
-    if not files:
-        # If no files, display "No text files found."
-        empty_label = ctk.CTkLabel(scrollable_frame, text="No text files found.", font=("Poppins", 16, "italic"))
-        empty_label.pack(pady=10)
-        active_windows["view_window"] = view_window
-        
+    # Function to update the frame width when the canvas is resized
+    def update_frame_width(event):
+        canvas_width = event.width
+        scrollable_frames.configure(width=canvas_width)
+        canvas.itemconfig(frame_window, width=canvas_width)
 
-    for file in files:
-        file_path = os.path.join(folder_path, file)
-        survey_details = parse_survey_file(file_path)
+    canvas.bind("<Configure>", update_frame_width)
+    
+    # Create a window inside the canvas that will hold the scrollable frame
+    frame_window = canvas.create_window((0, 0), window=scrollable_frames, anchor="nw")
 
-        # Create a frame for each survey file
-        file_frame = ctk.CTkFrame(scrollable_frame, fg_color="white", corner_radius=10)
-        file_frame.pack(fill="x", padx=5, pady=5)
-        file_frame.pack_propagate(False)
+    # Update scroll region when the content is resized
+    scrollable_frames.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+    canvas.configure(yscrollcommand=scrollbar.set)
 
-        # Load and display an image (placeholder)
-        image_path = "Folder.png"  # Adjust if using another image
-        image_pil = Image.open(image_path).resize((80, 80), Image.Resampling.LANCZOS)
-        image = ImageTk.PhotoImage(image_pil)
+    # Pack the canvas and scrollbar into the view window
+    canvas.pack(side="left", fill="both", expand=True)
+    scrollbar.pack(side="right", fill="y")
 
-        image_label = ctk.CTkLabel(file_frame, image=image, text="")
-        image_label.image = image  # Prevent garbage collection
-        image_label.pack(side="left", padx=10, pady=5)
 
-        # Text information frame
-        text_frame = ctk.CTkFrame(file_frame, fg_color="transparent")
-        text_frame.pack(side="left", fill="both", expand=True, padx=5, pady=5)
+    if is_logged_in:
+        # Fetch survey details from Firestore
+        try:
+            surveys_ref = db.collection("surveys").where("folder_name", "==", folder_name).where("user_email", "==", logged_in_email).stream()
+            surveys = []
 
-        # Date
-        date_label = ctk.CTkLabel(text_frame, text=f"Date: {survey_details['Date']}", font=("Poppins", 12, "bold"))
-        date_label.pack(anchor="w")
+            for survey in surveys_ref:
+                survey_data = survey.to_dict()
+                surveys.append(survey_data)
 
-        # Location
-        location_label = ctk.CTkLabel(text_frame, text=f"Location: {survey_details['Location']}", font=("Poppins", 12))
-        location_label.pack(anchor="w")
+            # Check if any surveys were found
+            if not surveys:
+                messagebox.showinfo("Info", "No surveys found in this folder.")
+            else:
+                # Display the fetched surveys
+                display_fetched_surveys(surveys, scrollable_frames)
 
-        # Description
-        description_label = ctk.CTkLabel(text_frame, text="Description:", font=("Poppins", 12, "bold"))
-        description_label.pack(anchor="w")
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not fetch survey files from Firestore:\n{str(e)}")
+    else:
+        # If not logged in, load local surveys
+        folder_path = os.path.join(SURVEY_DIR, folder_name)
+        files = [f for f in os.listdir(folder_path) if f.endswith(".txt")]
+        if not files:
+            empty_label = ctk.CTkLabel(scrollable_frames, text="No text files found.", font=("Poppins", 16, "italic"))
+            empty_label.pack(pady=10)
 
-        description_text_label = ctk.CTkLabel(
-            text_frame,
-            text=survey_details["Description"],
-            font=("Poppins", 12),
-            wraplength=400,
-            justify="left"
-        )
-        description_text_label.pack(anchor="w", padx=10)
+        for index, file in enumerate(files, start=1):
+            file_path = os.path.join(folder_path, file)
+            survey_details = parse_survey_file(file_path)
 
-        # Survey Metrics
-        metrics_label = ctk.CTkLabel(text_frame, text="Survey Metrics:", font=("Poppins", 12, "bold"))
-        metrics_label.pack(anchor="w", pady=(5, 0))
+            # Main frame per survey
+            file_frame = ctk.CTkFrame(scrollable_frames, fg_color="white", corner_radius=10)
+            file_frame.pack(fill="x", padx=10, pady=8)
 
-        metrics_text = "\n".join(
-            [f"- {key}: {value}" for key, value in survey_details["Metrics"].items()]
-        )
+            # Top header row with title, date, and menu button
+            header_frame = ctk.CTkFrame(file_frame, fg_color="transparent")
+            header_frame.pack(fill="x", padx=10, pady=(10, 5))
 
-        metrics_text_label = ctk.CTkLabel(text_frame, text=metrics_text, font=("Poppins", 12), justify="left")
-        metrics_text_label.pack(anchor="w", padx=10)
+            survey_title = ctk.CTkLabel(header_frame, text=f"Survey {index}", font=("Poppins", 20, "bold"))
+            survey_title.pack(side="left", anchor="w")
 
-        # Menu Button (Placeholder for actions)
-        menu_btn = ctk.CTkButton(file_frame, text="⋮", width=30, fg_color="white", text_color="black", corner_radius=5)
-        menu_btn.pack(side="right", padx=10)
+            menu_btn = ctk.CTkButton(header_frame, text="⋮", width=30, fg_color="white", text_color="black", corner_radius=5)
+            menu_btn.pack(side="right")
+            
+                    # Content area (address, datetime, image, and metrics)
+            content_frame = ctk.CTkFrame(file_frame, fg_color="transparent")
+            content_frame.pack(fill="x", padx=10, pady=10)
 
-    active_windows["view_window"] = view_window  # Store reference to prevent multiple windows
+            # Ensure 5 columns for alignment
+            for col in range(5):
+                content_frame.grid_columnconfigure(col, weight=1)
 
+            # Address (aligned with Elevation/Slope)
+            address_label = ctk.CTkLabel(content_frame, text="Address", font=("Poppins", 12))
+            address_label.grid(row=0, column=1, sticky="w",padx=10)
+
+            location_label = ctk.CTkLabel(content_frame, text=survey_details["Location"],font=("Poppins", 16, "bold", "italic"))
+            location_label.grid(row=1, column=1, sticky="w",padx=10)
+
+            # Date and Time (aligned with Elevation/Slope)
+            datetime_label = ctk.CTkLabel(content_frame, text="Date and Time", font=("Poppins", 12))
+            datetime_label.grid(row=0, column=3, sticky="w",padx=10)
+
+            datetime_value = ctk.CTkLabel(content_frame, text=survey_details["Date"], font=("Poppins", 16, "bold", "italic"))
+            datetime_value.grid(row=1, column=3, sticky="w",padx=10)
+
+            # Image on the left (aligned with description/metrics)
+            image_path = "Folder.png"
+            image_pil = Image.open(image_path).resize((250, 250), Image.Resampling.LANCZOS)
+            image = ImageTk.PhotoImage(image_pil)
+            image_label = ctk.CTkLabel(content_frame, image=image, text="")
+            image_label.image = image
+            image_label.grid(row=0, column=0, rowspan=4, padx=10, sticky="n")
+
+            # Description
+            desc_label = ctk.CTkLabel(content_frame, text="Description:", font=("Poppins", 11, "bold"))
+            desc_label.grid(row=2, column=1, sticky="w", padx=(10, 2))
+            desc_text = ctk.CTkLabel(content_frame, text=survey_details["Description"], font=("Poppins", 11), anchor="w")
+            desc_text.grid(row=2, column=2, columnspan=3, sticky="ew")
+
+            # Metrics (start from row 3 to avoid clashing with address/date)
+            metrics = survey_details["Metrics"]
+            metric_labels = [
+                ("Elevation :", metrics.get("Elevation", "N/A")),
+                ("Slope:", metrics.get("Slope", "N/A")),
+                ("Horizontal Distance:", metrics.get("Horizontal Distance", "N/A")),
+                ("Vertical Angle:", metrics.get("Vertical Angle", "N/A"))
+            ]
+
+            # First row of metrics (Elevation + Slope)
+            elev_label = ctk.CTkLabel(content_frame, text=metric_labels[0][0], font=("Poppins", 11, "bold"))
+            elev_label.grid(row=3, column=1, sticky="w", padx=10)
+            elev_val = ctk.CTkLabel(content_frame, text=metric_labels[0][1], font=("Poppins", 11))
+            elev_val.grid(row=3, column=2, sticky="w")
+
+            slope_label = ctk.CTkLabel(content_frame, text=metric_labels[1][0], font=("Poppins", 11, "bold"))
+            slope_label.grid(row=3, column=3, sticky="w", padx=(20, 2))
+            slope_val = ctk.CTkLabel(content_frame, text=metric_labels[1][1], font=("Poppins", 11))
+            slope_val.grid(row=3, column=4, sticky="w")
+
+            # Second row of metrics (Horizontal Distance + Vertical Angle)
+            hdist_label = ctk.CTkLabel(content_frame, text=metric_labels[2][0], font=("Poppins", 11, "bold"))
+            hdist_label.grid(row=4, column=1, sticky="w", padx=10)
+            hdist_val = ctk.CTkLabel(content_frame, text=metric_labels[2][1], font=("Poppins", 11))
+            hdist_val.grid(row=4, column=2, sticky="w")
+
+            vangle_label = ctk.CTkLabel(content_frame, text=metric_labels[3][0], font=("Poppins", 11, "bold"))
+            vangle_label.grid(row=4, column=3, sticky="w", padx=(20, 2))
+            vangle_val = ctk.CTkLabel(content_frame, text=metric_labels[3][1], font=("Poppins", 11))
+            vangle_val.grid(row=4, column=4, sticky="w")
+
+
+                  
+
+
+    # Store reference to the view window to prevent multiple instances
+    active_windows["view_window"] = view_window
+
+    # Close all other windows except the current one
     close_all_windows(active_windows["view_window"])
     active_windows["view_window"].deiconify()
 
 
-def open_survey_folder_window():
-    global scrollable_frame, surveyFolder
-    if "surveyFolder" not in active_windows or not active_windows["surveyFolder"].winfo_exists():
-        tk_root.withdraw()
-        surveyFolder = ctk.CTkToplevel(tk_root)
-        surveyFolder.title("Survey Folder")
-        surveyFolder.geometry(f"{WIDTH}x{HEIGHT}")
-        surveyFolder.configure(bg="#e5e5e5")
-        center_window(surveyFolder, WIDTH, HEIGHT)
-        surveyFolder.resizable(False, False)
 
-        create_navigation_bar(surveyFolder)
-        screen_width = surveyFolder.winfo_screenwidth()
-
-        add_folder_frame = ctk.CTkFrame(surveyFolder, fg_color="#d3d3d3", height=100, corner_radius=0, width=screen_width)
-        add_folder_frame.pack(fill="x", pady=10)
-        add_folder_frame.pack_propagate(False)
-
-        plus_btn = ctk.CTkButton(
-            add_folder_frame, text="+", font=("Poppins", 28, "bold"),
-            width=50, height=50, fg_color="white", text_color="black",
-            hover_color="#bfbfbf", corner_radius=10,
-            command=add_survey
-        )
-        plus_btn.pack(side="left", padx=20, pady=10)
-
-        add_folder_label = ctk.CTkButton(
-            add_folder_frame, text="Add new survey folder", font=("Poppins", 18, "bold"),
-            fg_color="#d3d3d3", text_color="black", hover_color="#bfbfbf",
-            border_width=0, corner_radius=10, command=add_survey
-        )
-        add_folder_label.pack(side="left", padx=10)
-
-        surveyFolderFrame = ctk.CTkFrame(surveyFolder, fg_color="#e5e5e5")
-        surveyFolderFrame.pack(fill="both", expand=True)
-
-        canvas = tk.Canvas(surveyFolderFrame, bg="#e5e5e5", highlightthickness=0)
-        scrollbar = ctk.CTkScrollbar(surveyFolderFrame, orientation="vertical", command=canvas.yview)
-        scrollable_frame = ctk.CTkFrame(canvas, fg_color="#e5e5e5")
-
-        def update_frame_width(event):
-            canvas_width = event.width
-            scrollable_frame.configure(width=canvas_width)
-            canvas.itemconfig(frame_window, width=canvas_width)
-
-        canvas.bind("<Configure>", update_frame_width)
-        frame_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-
-        scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.configure(yscrollcommand=scrollbar.set)
-
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-
-        load_existing_surveys()  # Load and display existing surveys
-
-        active_windows["surveyFolder"] = surveyFolder
-
-    close_all_windows(active_windows["surveyFolder"])
-    active_windows["surveyFolder"].deiconify()
 """END HERE"""
 
 
@@ -1455,6 +1696,7 @@ def surveyResult():
                     messagebox.showinfo("Success", f"Survey saved in new folder:\n{new_folder_path} and also in the database.")
                 else:
                     messagebox.showinfo("Success", f"Survey saved locally in:\n{new_folder_path}.")
+                
 
             except Exception as e:
                 messagebox.showerror("Error", f"Could not create/save to folder:\n{str(e)}")
@@ -1579,6 +1821,7 @@ def surveyResult():
     delete_button.pack(side="right", padx=20)
 """ENDS HERE"""
    
+
 
 # Run Application
 tk_root.mainloop()
