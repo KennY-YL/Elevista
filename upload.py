@@ -943,11 +943,27 @@ def add_survey():
         except Exception as e:
             messagebox.showerror("Error", f"Could not create folder:\n{str(e)}")
 
-def delete_survey(folder_widget, folder_path):
+def delete_survey(folder_widget, folder_path, folder_name):
     try:
-        shutil.rmtree(folder_path)  # Recursively delete the folder and its contents
-        folder_widget.destroy()     # Remove from UI
-        messagebox.showinfo("Deleted", "Folder deleted successfully!")
+        if is_logged_in:
+            # If logged in, delete the Firestore entry
+            surveys_ref = db.collection("surveys").where("folder_name", "==", folder_name).where("user_email", "==", logged_in_email).stream()
+            for survey in surveys_ref:
+                # Delete the survey entry from Firestore
+                db.collection("surveys").document(survey.id).delete()
+
+            # Optionally, delete the folder from Firestore as well
+            db.collection("survey_folders").where("folder_name", "==", folder_name).where("user_email", "==", logged_in_email).get()
+            for folder in surveys_ref:
+                db.collection("survey_folders").document(folder.id).delete()
+
+            messagebox.showinfo("Deleted", "Folder and corresponding database entries deleted successfully!")
+        else:
+            # If not logged in, delete the folder locally
+            shutil.rmtree(folder_path)  # Recursively delete the folder and its contents
+            folder_widget.destroy()     # Remove from UI
+            messagebox.showinfo("Deleted", "Folder deleted successfully!")
+
     except Exception as e:
         messagebox.showerror("Error", f"Could not delete folder:\n{str(e)}")
 
@@ -1017,7 +1033,7 @@ def display_folder(folder_name):
     view_btn.pack(side="left", padx=5)
 
     delete_btn = ctk.CTkButton(button_frame, text="Delete", font=("Poppins", 14, "bold"), fg_color="#ff5252", text_color="white", corner_radius=5,
-                                command=lambda: delete_survey(folder_frame, folder_path))
+                            command=lambda: delete_survey(folder_frame, folder_path, folder_name))
     delete_btn.pack(side="left", padx=5)
 
 
@@ -1628,6 +1644,79 @@ def surveyResult():
         value_label = ctk.CTkLabel(frame, text=value, font=("Arial", 12), text_color="#333333")
         value_label.pack(side="left")
 
+    def show_folder_selection_popup(root, folder_names):
+        selected_folder = None
+        popup = ctk.CTkToplevel(root)
+        popup.geometry("320x180+700+450")
+        popup.configure(fg_color="white")
+        popup.transient(root)
+        popup.grab_set()
+        popup.overrideredirect(True)
+
+        # Label
+        ctk.CTkLabel(popup, text="Select a folder from your saved list:", font=ctk.CTkFont(size=14)).pack(pady=(15, 8))
+
+        # Dropdown
+        folder_var = ctk.StringVar(value=folder_names[0])
+        dropdown = ctk.CTkComboBox(popup, variable=folder_var, values=folder_names, width=250)
+        dropdown.pack(pady=5)
+
+        # Internal function to handle selection
+        def select_and_close():
+            nonlocal selected_folder
+            selected_folder = folder_var.get()
+            popup.destroy()
+
+        def cancel_and_close():
+            popup.destroy()
+
+        # Buttons
+        btn_frame = ctk.CTkFrame(popup, fg_color="transparent")
+        btn_frame.pack(pady=15)
+
+        ctk.CTkButton(btn_frame, text="Select", command=select_and_close, width=90,fg_color="#1abc9c", 
+                                text_color="white", hover_color="#16a085").pack(side="left", padx=10)
+        ctk.CTkButton(btn_frame, text="Cancel", command=cancel_and_close, width=90,fg_color="#1abc9c", 
+                                text_color="white", hover_color="#16a085").pack(side="left", padx=10)
+
+        root.wait_window(popup)
+        return selected_folder
+    def choose_folder_and_save():
+        if is_logged_in:
+            try:
+                # Fetch folders from Firestore
+                folder_docs = db.collection("survey_folders").where("user_email", "==", logged_in_email).get()
+                folder_names = [doc.to_dict()["folder_name"] for doc in folder_docs]
+
+                if not folder_names:
+                    messagebox.showinfo("No Folders", "No folders found in your account.",parent=popup)
+                    return
+
+                # Show custom popup instead of simpledialog
+                selected = show_folder_selection_popup(survey_result_window, folder_names)
+
+                # If user cancels (X or Cancel button), do nothing
+                if not selected:
+                    return
+
+                if selected in folder_names:
+                    folder_path = os.path.join(SURVEY_DIR, selected)
+                    if not os.path.exists(folder_path):
+                        os.makedirs(folder_path)
+
+                    save_survey_details_to_folder(folder_path)
+                else:
+                    messagebox.showwarning("Invalid", "Invalid folder name selected.",parent=popup)
+
+            except Exception as e:
+                messagebox.showerror("Error", str(e),parent=popup)
+        else:
+            # User is not logged in — use local file dialog
+            folder_selected = filedialog.askdirectory(parent=survey_result_window,initialdir=SURVEY_DIR,title="Select an Existing Survey Folder")
+            if folder_selected:
+                save_survey_details_to_folder(folder_selected)
+            else:
+                messagebox.showwarning("Warning", "No folder selected. Please select a folder.",parent=survey_result_window)
 
 
     def save_to_new_survey_folder():
@@ -1639,7 +1728,7 @@ def surveyResult():
 
             # Check if the folder already exists
             if os.path.exists(new_folder_path):
-                messagebox.showerror("Error", "A folder with this name already exists.")
+                messagebox.showerror("Error", "A folder with this name already exists.",parent=survey_result_window)
                 return
 
             try:
@@ -1651,7 +1740,7 @@ def surveyResult():
                 description = desc_textbox.get("1.0", tk.END).strip()
 
                 if not date or not location or not description:
-                    messagebox.showwarning("Warning", "Please ensure all fields are filled before saving.")
+                    messagebox.showwarning("Warning", "Please ensure all fields are filled before saving.",parent=survey_result_window)
                     return
 
                 # Survey Metrics (you can make this dynamic later)
@@ -1699,77 +1788,84 @@ def surveyResult():
                 
 
             except Exception as e:
-                messagebox.showerror("Error", f"Could not create/save to folder:\n{str(e)}")
+                messagebox.showerror("Error", f"Could not create/save to folder:\n{str(e)}",parent=survey_result_window)
 
         else:
-            messagebox.showwarning("Cancelled", "Folder creation cancelled.")
+            messagebox.showwarning("Cancelled", "Folder creation cancelled.",parent=survey_result_window)
 
 
 
 
-    def save_survey_details():
-        folder_selected = filedialog.askdirectory(initialdir=SURVEY_DIR, title="Select an Existing Survey Folder")
-        
-        if folder_selected:  # Ensure user selected a folder
-            # Get values from the UI fields
-            date = date_label.cget("text").strip()
-            location = location_label.cget("text").strip()
-            description = desc_textbox.get("1.0", tk.END).strip()  # Get text from Textbox
+    def save_survey_details_to_folder(folder_selected):
+    # Get values from the UI fields
+        date = date_label.cget("text").strip()
+        location = location_label.cget("text").strip()
+        description = desc_textbox.get("1.0", tk.END).strip()  # Get text from Textbox
 
-            # Survey Metrics (static for now, can be dynamic if needed)
-            metrics = {
-                "Horizontal Distance": "N/A",
-                "Vertical Angle": "N/A",
-                "Slope": "N/A",
-                "Elevation": "N/A"
-            }
+        # Survey Metrics (static for now, can be dynamic if needed)
+        metrics = {
+            "Horizontal Distance": "N/A",
+            "Vertical Angle": "N/A",
+            "Slope": "N/A",
+            "Elevation": "N/A"
+        }
 
-            # Ensure required fields are not empty
-            if not date or not location or not description:
-                messagebox.showwarning("Warning", "Please ensure all fields are filled before saving.")
-                return
+        # Ensure required fields are not empty
+        if not date or not location or not description:
+            messagebox.showwarning("Warning", "Please ensure all fields are filled before saving.",parent=survey_result_window)
+            return
 
-            try:
-                # Generate a unique file name using timestamp
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")  # Example: 20250403_121530
-                file_path = os.path.join(folder_selected, f"survey_{timestamp}.txt")
+        try:
+            # Generate a unique file name using timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            file_path = os.path.join(folder_selected, f"survey_{timestamp}.txt")
 
-                # Ensure no overwriting
-                counter = 1
-                while os.path.exists(file_path):  # Check if file already exists
-                    file_path = os.path.join(folder_selected, f"survey_{timestamp}_{counter}.txt")
-                    counter += 1
+            # Ensure no overwriting
+            counter = 1
+            while os.path.exists(file_path):
+                file_path = os.path.join(folder_selected, f"survey_{timestamp}_{counter}.txt")
+                counter += 1
 
-                # Save survey details to a uniquely named file
-                with open(file_path, "w") as file:
-                    file.write(f"Date: {date}\n")
-                    file.write(f"Location: {location}\n")
-                    file.write(f"Description:\n{description}\n\n")
-                    file.write("Survey Metrics:\n")
-                    for key, value in metrics.items():
-                        file.write(f"- {key}: {value}\n")
+            # Save survey details to file
+            with open(file_path, "w") as file:
+                file.write(f"Date: {date}\n")
+                file.write(f"Location: {location}\n")
+                file.write(f"Description:\n{description}\n\n")
+                file.write("Survey Metrics:\n")
+                for key, value in metrics.items():
+                    file.write(f"- {key}: {value}\n")
 
-                # Check if the user is logged in
-                if is_logged_in:
-                    # Save to Firestore
-                    db.collection("surveys").add({
+            # Save to Firestore if logged in
+            if is_logged_in:
+                folder_name = os.path.basename(folder_selected)
+
+                # Optional: ensure folder exists in Firestore
+                folder_query = db.collection("folders").where("user_email", "==", logged_in_email).where("folder_name", "==", folder_name).get()
+                if not folder_query:
+                    db.collection("folders").add({
                         "user_email": logged_in_email,
-                        "file_path": file_path,
-                        "folder_name": os.path.basename(folder_selected),
-                        "date": date,
-                        "location": location,
-                        "description": description,
-                        "metrics": metrics,
-                        "timestamp": firestore.SERVER_TIMESTAMP
+                        "folder_name": folder_name,
+                        "created_at": firestore.SERVER_TIMESTAMP
                     })
-                    messagebox.showinfo("Success", f"Survey details saved in: {file_path} and also in the database.")
-                else:
-                    messagebox.showinfo("Success", f"Survey details saved locally in: {file_path}.")
 
-            except Exception as e:
-                messagebox.showerror("Error", f"Could not save file:\n{str(e)}")
-        else:
-            messagebox.showwarning("Warning", "No folder selected. Please select a folder.")
+                # Save survey entry
+                db.collection("surveys").add({
+                    "user_email": logged_in_email,
+                    "file_path": file_path,
+                    "folder_name": folder_name,
+                    "date": date,
+                    "location": location,
+                    "description": description,
+                    "metrics": metrics,
+                    "timestamp": firestore.SERVER_TIMESTAMP
+                })
+
+                messagebox.showinfo("Success", f"Survey saved in:\n{file_path}\n\nAlso synced to database.")
+            else:
+                messagebox.showinfo("Success", f"Survey saved locally in:\n{file_path}")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not save file:\n{str(e)}")
 
     def popup_save():
         popup = ctk.CTkToplevel(tk_root)
@@ -1798,7 +1894,7 @@ def surveyResult():
         # Existing Button
         existing_button = ctk.CTkButton(
             popup, text="Save to Existing Folder", fg_color="white", text_color="black",
-            hover_color="#1abc9c", command=save_survey_details
+            hover_color="#1abc9c", command=choose_folder_and_save
         )
         existing_button.pack(pady=5)
 
