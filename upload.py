@@ -6,21 +6,34 @@ from PIL import Image, ImageTk, ImageDraw
 from itertools import cycle
 from tkinter import messagebox,simpledialog
 import firebase_admin
-from firebase_admin import credentials, firestore
+from firebase_admin import credentials, firestore,storage
 import hashlib  # For password hashing
 import json
 import os
 from datetime import datetime
 import shutil
-
-
-
+import pickle
+import requests
+from io import BytesIO
+from tkinter import PhotoImage
+import os
+import shutil
+import pickle
+import tkinter as tk
+from tkinter import messagebox
+from datetime import datetime
+from google_auth_oauthlib.flow import InstalledAppFlow  # For OAuth2 Flow
+from google.auth.transport.requests import Request  # For refreshing tokens
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+import urllib.request
 # Initialize customtkinter
 ctk.set_appearance_mode("white")
 ctk.set_default_color_theme("blue")
 
 # Set initial window size
 WIDTH, HEIGHT = 1200, 650
+ACCESS_TOKEN = "52b534ddb55a33694193dcc6549142cff8adc989"
 
 # Keep track of all open top-level windows
 open_windows = []
@@ -289,7 +302,7 @@ def open_instruction_window():
             ("im4.png", "Colored Chalk"),
             ("im5.png", "Stadia Rod"),
             ("im6.png", "Meter Stick"),
-            ("im7.png", "Pampatay sa bampira")
+            ("im7.png", "Wooden Stick")
         ]
 
         # Canvas for image gallery
@@ -785,6 +798,33 @@ def center_window(window, width, height):
 
 """SURVEY FOLDER"""
 scrollable_frame = None 
+
+menu_dialog = None
+def menu_button_dialog():
+    global menu_dialog
+
+    if menu_dialog and menu_dialog.winfo_exists():
+        menu_dialog.destroy()
+        menu_dialog = None
+    else:
+        menu_dialog = ctk.CTkToplevel(tk_root)
+        menu_dialog.geometry("220x120+1500+169")
+        menu_dialog.configure(fg_color="white")
+        menu_dialog.overrideredirect(True)
+
+        # Download Button
+        download_button = ctk.CTkButton(menu_dialog, text="Download", fg_color="black", text_color="white",
+                                      hover_color="gray")
+        download_button .pack(pady=10)
+
+
+        # Delete Button
+        delete_button = ctk.CTkButton(menu_dialog, text="Delete", fg_color="black", text_color="white",
+                                      hover_color="gray")
+        delete_button.pack(pady=10)
+
+
+
 def custom_input_dialog():
     dialog = ctk.CTkToplevel()
     dialog.title("Survey")
@@ -906,42 +946,43 @@ def open_survey_folder_window():
 def add_survey():
     folder_name = custom_input_dialog()
     if folder_name:
-        # Create the folder locally first
-        folder_path = os.path.join(SURVEY_DIR, folder_name)
         try:
-            if os.path.exists(folder_path):
-                messagebox.showerror("Error", f"A folder with the name '{folder_name}' already exists locally.")
-                return
-
-            os.makedirs(folder_path, exist_ok=True)
-            display_folder(folder_name)  # Display newly created folder
-
             if is_logged_in:
-                # Check if the folder name already exists in Firestore
-                try:
-                    surveys_ref = db.collection("survey_folders").where("folder_name", "==", folder_name).where("user_email", "==", logged_in_email).stream()
-                    existing_folders = list(surveys_ref)
+                # 🔥 Check if the folder already exists in Firestore (database only)
+                surveys_ref = db.collection("survey_folders") \
+                    .where("folder_name", "==", folder_name) \
+                    .where("user_email", "==", logged_in_email) \
+                    .stream()
+                existing_folders = list(surveys_ref)
 
-                    if existing_folders:
-                        messagebox.showerror("Error", f"A folder with the name '{folder_name}' already exists in Firebase.")
-                        # Remove the locally created folder since it wasn't created in Firestore
-                        shutil.rmtree(folder_path)
-                        return
+                if existing_folders:
+                    messagebox.showerror("Error", f"A folder with the name '{folder_name}' already exists in Firebase.")
+                    return
 
-                    # If the folder name is not in use, create a new folder in Firestore
-                    db.collection("survey_folders").add({
-                        "user_email": logged_in_email,
-                        "folder_name": folder_name,
-                        "timestamp": firestore.SERVER_TIMESTAMP
-                    })
-                    messagebox.showinfo("Survey", f"Folder '{folder_name}' created successfully in Firebase!", parent=surveyFolder)
-                except Exception as e:
-                    messagebox.showerror("Error", f"Could not create folder in Firebase:\n{str(e)}")
+                # If the folder does not exist in Firestore, create it in Firestore
+                db.collection("survey_folders").add({
+                    "user_email": logged_in_email,
+                    "folder_name": folder_name,
+                    "timestamp": firestore.SERVER_TIMESTAMP
+                })
+                messagebox.showinfo("Survey", f"Folder '{folder_name}' created successfully in Firebase!", parent=surveyFolder)
+                display_folder(folder_name)
+
             else:
+                # 📁 If not logged in, create folder locally
+                folder_path = os.path.join(SURVEY_DIR, folder_name)
+
+                if os.path.exists(folder_path):
+                    messagebox.showerror("Error", f"A folder with the name '{folder_name}' already exists locally.")
+                    return
+
+                os.makedirs(folder_path, exist_ok=True)
+                display_folder(folder_name)  # Display the newly created folder
                 messagebox.showinfo("Survey", f"Folder '{folder_name}' created successfully locally!", parent=surveyFolder)
 
         except Exception as e:
             messagebox.showerror("Error", f"Could not create folder:\n{str(e)}")
+
 
 def delete_survey(folder_widget, folder_path, folder_name):
     try:
@@ -952,23 +993,30 @@ def delete_survey(folder_widget, folder_path, folder_name):
                 # Delete the survey entry from Firestore
                 db.collection("surveys").document(survey.id).delete()
 
-            # Optionally, delete the folder from Firestore as well
-            db.collection("survey_folders").where("folder_name", "==", folder_name).where("user_email", "==", logged_in_email).get()
-            for folder in surveys_ref:
+            # Delete the folder from Firestore as well
+            folder_ref = db.collection("survey_folders").where("folder_name", "==", folder_name).where("user_email", "==", logged_in_email).get()
+            for folder in folder_ref:
                 db.collection("survey_folders").document(folder.id).delete()
 
+            # Confirm deletion
             messagebox.showinfo("Deleted", "Folder and corresponding database entries deleted successfully!")
         else:
             # If not logged in, delete the folder locally
             shutil.rmtree(folder_path)  # Recursively delete the folder and its contents
-            folder_widget.destroy()     # Remove from UI
             messagebox.showinfo("Deleted", "Folder deleted successfully!")
+        folder_widget.destroy()  # Remove from UI
+        open_survey_folder_window()
+
 
     except Exception as e:
         messagebox.showerror("Error", f"Could not delete folder:\n{str(e)}")
 
+
+
+        
 def fetch_survey_folders_from_firebase():
     """Fetch survey folders from Firestore if the user is logged in."""
+    
     if is_logged_in:
         try:
             print(f"Fetching folders for user: {logged_in_email}")  # Debugging print
@@ -1044,8 +1092,10 @@ def load_existing_surveys():
         display_folder(folder)  # Display each folder
 
 
+import pickle
+
 def parse_survey_file(file_path):
-    """Extracts Date, Location, Description, and Metrics from a survey file."""
+    """Extracts Date, Location, Description, Metrics, Image Path, and Timestamp from a pickle survey file."""
     details = {
         "Date": "Unknown",
         "Location": "Unknown",
@@ -1055,36 +1105,85 @@ def parse_survey_file(file_path):
             "Vertical Angle": "N/A",
             "Slope": "N/A",
             "Elevation": "N/A"
-        }
+        },
+        "Image Path": "N/A",
+        "Timestamp": "N/A"
     }
 
     try:
-        with open(file_path, "r", encoding="utf-8") as file:
-            lines = file.readlines()
+        with open(file_path, "rb") as file:
+            survey_data = pickle.load(file)
 
-            # Parse each line
-            for i, line in enumerate(lines):
-                line = line.strip()
+            details["Date"] = survey_data.get("date", "Unknown")
+            details["Location"] = survey_data.get("location", "Unknown")
+            details["Description"] = survey_data.get("description", "No description available.")
 
-                if line.startswith("Date:"):
-                    details["Date"] = line.replace("Date:", "").strip()
-                elif line.startswith("Location:"):
-                    details["Location"] = line.replace("Location:", "").strip()
-                elif line.startswith("Description:"):
-                    details["Description"] = lines[i+1].strip() if i+1 < len(lines) else "No description available."
-                elif line.startswith("- Horizontal Distance:"):
-                    details["Metrics"]["Horizontal Distance"] = line.split(":")[1].strip()
-                elif line.startswith("- Vertical Angle:"):
-                    details["Metrics"]["Vertical Angle"] = line.split(":")[1].strip()
-                elif line.startswith("- Slope:"):
-                    details["Metrics"]["Slope"] = line.split(":")[1].strip()
-                elif line.startswith("- Elevation:"):
-                    details["Metrics"]["Elevation"] = line.split(":")[1].strip()
+            metrics = survey_data.get("metrics", {})
+            details["Metrics"]["Horizontal Distance"] = metrics.get("Horizontal Distance", "N/A")
+            details["Metrics"]["Vertical Angle"] = metrics.get("Vertical Angle", "N/A")
+            details["Metrics"]["Slope"] = metrics.get("Slope", "N/A")
+            details["Metrics"]["Elevation"] = metrics.get("Elevation", "N/A")
+
+            details["Image Path"] = survey_data.get("image_path", "N/A")
+            details["Timestamp"] = survey_data.get("timestamp", "N/A")
 
     except Exception as e:
-        print(f"Error reading file {file_path}: {e}")
+        print(f"Error reading pickle file {file_path}: {e}")
 
     return details
+
+
+
+
+def fetch_image_url_from_firestore(survey_id):
+    """Fetch image URL of the Google Drive file from Firestore."""
+    try:
+        # Assuming you store the survey info in a collection 'surveys' in Firestore
+        survey_ref = db.collection("surveys").document(survey_id)
+        survey_doc = survey_ref.get()
+
+        if survey_doc.exists:
+            image_drive_id = survey_doc.to_dict().get("image_drive_id")
+            if image_drive_id:
+                # Construct the Google Drive file URL
+                image_url = f"https://drive.google.com/uc?id={image_drive_id}"
+                return image_url
+            else:
+                print("No image drive ID found in Firestore")
+                return None
+        else:
+            print("Survey document not found")
+            return None
+    except Exception as e:
+        print(f"Error fetching image URL from Firestore: {e}")
+        return None
+
+
+def load_and_display_image(image_url, label):
+    """Fetch image URL and display it in the Tkinter label."""
+    try:
+        print(f"Fetching image from URL: {image_url}")
+        
+        # Step 1: Fetch the image data using urllib
+        with urllib.request.urlopen(image_url) as response:
+            img_data = response.read()  # Read image data from the URL
+            
+            # Step 2: Check if the response is indeed an image by looking at the content type
+            if 'image' not in response.getheader('Content-Type'):
+                print("The URL does not return an image")
+                return
+
+            # Step 3: Open image using PIL
+            img_pil = Image.open(BytesIO(img_data)).resize((250, 250), Image.Resampling.LANCZOS)
+            img = ImageTk.PhotoImage(img_pil)  # Use ImageTk.PhotoImage for Tkinter compatibility
+            
+            # Step 4: Display the image in the label
+            label.configure(image=img)
+            label.image = img  # Keep a reference to avoid garbage collection
+            print("Image loaded successfully")
+        
+    except Exception as e:
+        print(f"Error loading image: {e}")
 
 def display_fetched_surveys(surveys, scrollable_frames):
     """Display fetched surveys in the scrollable frame."""
@@ -1104,7 +1203,7 @@ def display_fetched_surveys(surveys, scrollable_frames):
         survey_title = ctk.CTkLabel(header_frame, text="Survey", font=("Poppins", 20, "bold"))
         survey_title.pack(side="left", anchor="w")
 
-        menu_btn = ctk.CTkButton(header_frame, text="⋮", width=30, fg_color="white", text_color="black", corner_radius=5)
+        menu_btn = ctk.CTkButton(header_frame, text="⋮", width=30, fg_color="white", text_color="black", corner_radius=5,command=menu_button_dialog)
         menu_btn.pack(side="right")
 
         # Content area (address, datetime, image, and metrics)
@@ -1130,15 +1229,17 @@ def display_fetched_surveys(surveys, scrollable_frames):
         datetime_value = ctk.CTkLabel(content_frame, text=survey["date"], font=("Poppins", 16, "bold", "italic"))
         datetime_value.grid(row=1, column=3, sticky="w", padx=10)
 
-        # Image on the left (aligned with description/metrics)
-        image_path = "Folder.png"
-        image_pil = Image.open(image_path).resize((250, 250), Image.Resampling.LANCZOS)
-        image = ImageTk.PhotoImage(image_pil)
-        image_label = ctk.CTkLabel(content_frame, image=image, text="")
-        image_label.image = image
+        # Image
+        image_label = ctk.CTkLabel(content_frame,text="")  # Label to hold the image
         image_label.grid(row=0, column=0, rowspan=4, padx=10, sticky="n")
 
-        # Description
+        image_drive_id = survey.get("image_drive_id")
+        if image_drive_id:
+            # Construct the correct Google Drive image URL
+            image_url = f"https://drive.google.com/uc?id={image_drive_id}"
+            load_and_display_image(image_url, image_label)  # Pass the correct URL
+
+          # Description
         desc_label = ctk.CTkLabel(content_frame, text="Description:", font=("Poppins", 11, "bold"))
         desc_label.grid(row=2, column=1, sticky="w", padx=(10, 2))
         desc_text = ctk.CTkLabel(content_frame, text=survey["description"], font=("Poppins", 11), anchor="w")
@@ -1178,9 +1279,6 @@ def display_fetched_surveys(surveys, scrollable_frames):
         vangle_val.grid(row=4, column=4, sticky="w")
 
 
-   
-
-    
 def view_survey_files(folder_name):
     """Displays all text files in the selected folder dynamically."""
     # Create the view window
@@ -1242,7 +1340,7 @@ def view_survey_files(folder_name):
     else:
         # If not logged in, load local surveys
         folder_path = os.path.join(SURVEY_DIR, folder_name)
-        files = [f for f in os.listdir(folder_path) if f.endswith(".txt")]
+        files = [f for f in os.listdir(folder_path) if f.endswith(".pkl")]
         if not files:
             empty_label = ctk.CTkLabel(scrollable_frames, text="No text files found.", font=("Poppins", 16, "italic"))
             empty_label.pack(pady=10)
@@ -1262,7 +1360,7 @@ def view_survey_files(folder_name):
             survey_title = ctk.CTkLabel(header_frame, text=f"Survey {index}", font=("Poppins", 20, "bold"))
             survey_title.pack(side="left", anchor="w")
 
-            menu_btn = ctk.CTkButton(header_frame, text="⋮", width=30, fg_color="white", text_color="black", corner_radius=5)
+            menu_btn = ctk.CTkButton(header_frame, text="⋮", width=30, fg_color="white", text_color="black", corner_radius=5,command=menu_button_dialog)
             menu_btn.pack(side="right")
             
                     # Content area (address, datetime, image, and metrics)
@@ -1288,13 +1386,17 @@ def view_survey_files(folder_name):
             datetime_value.grid(row=1, column=3, sticky="w",padx=10)
 
             # Image on the left (aligned with description/metrics)
-            image_path = "Folder.png"
-            image_pil = Image.open(image_path).resize((250, 250), Image.Resampling.LANCZOS)
+            image_path = survey_details.get("Image Path", "Folder.png")
+            try:
+                image_pil = Image.open(image_path).resize((250, 250), Image.Resampling.LANCZOS)
+            except Exception as e:
+                print(f"Failed to load image {image_path}: {e}")
+                image_pil = Image.open("Folder.png").resize((250, 250), Image.Resampling.LANCZOS)
+
             image = ImageTk.PhotoImage(image_pil)
             image_label = ctk.CTkLabel(content_frame, image=image, text="")
             image_label.image = image
             image_label.grid(row=0, column=0, rowspan=4, padx=10, sticky="n")
-
             # Description
             desc_label = ctk.CTkLabel(content_frame, text="Description:", font=("Poppins", 11, "bold"))
             desc_label.grid(row=2, column=1, sticky="w", padx=(10, 2))
@@ -1382,7 +1484,7 @@ create_navigation_bar(tk_root)
    
 """LOADING SCREEN"""
 # Function to open loading screen
-def open_loading_screen(parent_window):
+def open_loading_screen(parent_window,survey_title,description,file_path):
     # Create the loading window using customtkinter instead of tkinter
     loading_window = ctk.CTkToplevel(tk_root)
     # Add to open windows list
@@ -1434,7 +1536,7 @@ def open_loading_screen(parent_window):
     def animate_dots():
         nonlocal loading_text
         loading_text = next(loading_texts)
-        loading_window.after(500, animate_dots)  # Update dots every 500ms
+        loading_window.after(100, animate_dots)  # Update dots every 500ms
 
     animate_loading()
     animate_dots()
@@ -1452,7 +1554,7 @@ def open_loading_screen(parent_window):
             if loading_window in open_windows:
                 open_windows.remove(loading_window)
             # Open the survey result window instead of re-enabling the parent window
-            surveyResult()
+            surveyResult(survey_title,description,file_path)
 
     loading_window.after(5000, close_loading)
 
@@ -1544,7 +1646,7 @@ def upload_file():
         submit_button = ctk.CTkButton(
             form_frame, text="Submit", fg_color="#09AAA3", hover_color="#07A293",
             text_color="#ffffff", width=200, height=40, corner_radius=5, state="disabled",
-            command=lambda: open_loading_screen(survey_window)  # Pass survey_window to close it when loading starts
+            command=lambda: open_loading_screen(survey_window,title_entry.get(),desc_entry.get(),file_path)  # Pass survey_window to close it when loading starts
         )
         submit_button.pack(pady=20)
 # Upload Button
@@ -1558,7 +1660,53 @@ upload_btn.place(relx=0.5, rely=0.6, anchor="center")
 
 
 """SURVEY RESULT WINDOW"""
-def surveyResult():
+
+def address_dialog():
+    dialog = ctk.CTkToplevel()
+    dialog.title("Survey")
+   
+    dialog.geometry("300x175+800+300")
+    dialog.configure(fg_color="white")
+    dialog.resizable(False, False)
+    dialog.overrideredirect(True)
+
+    # Close Button (Top Right)
+    close_button = ctk.CTkButton(
+        dialog, text="✕", font=("Poppins", 14, "bold"),
+        fg_color="white", text_color="#00b3b3", width=30, height=30,
+        corner_radius=5, border_width=0, command=dialog.destroy
+    )
+    close_button.place(relx=1.0, x=-10, y=10, anchor="ne")  # Positions at the top-right
+
+    # Label
+    ctk.CTkLabel(dialog, text="Enter new address:", font=("Poppins", 14), text_color="black").pack(pady=(40, 5))
+
+    # Entry Field
+    entry = ctk.CTkEntry(dialog, font=("Poppins", 12), width=200, fg_color="white", text_color="black")
+    entry.pack(pady=5)
+
+    result = ctk.StringVar()
+    def submit():
+        result.set(entry.get())
+        dialog.destroy()
+
+    # OK Button (Bottom Right)
+    submit_button = ctk.CTkButton(
+        dialog, text="OK", command=submit, font=("Arial", 14, "bold"),
+        fg_color="#00b3b3", text_color="white", corner_radius=5, width=70, height=30
+    )
+    submit_button.place(relx=1.0, rely=1.0, x=-15, y=-15, anchor="se")  # Bottom right positioning
+
+    dialog.grab_set()  # Make modal
+    dialog.wait_window()  # Wait until closed
+
+    return result.get()
+
+    
+
+def surveyResult(survey_title,description,image):
+    global image_path
+    image_path = image
     if not tk_root.winfo_exists():
         print("Error: tk_root does not exist.")
         return
@@ -1575,30 +1723,40 @@ def surveyResult():
 
     # Main Content Frame
     main_frame = ctk.CTkFrame(survey_result_window, fg_color="transparent")
-    main_frame.pack(pady=40, padx=20, fill="both", expand=True)
+    main_frame.pack(pady=40, padx=20, fill="both", expand=True)  # Center the main_frame
+
+    # Create a container frame to hold both the image and details
+  # Create a container frame to hold both the image and details
+    content_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+    content_frame.pack(expand=True)
 
     # Left - Image Frame
-    img_frame = ctk.CTkFrame(main_frame, fg_color="transparent", width=350, height=350)
-    img_frame.pack(side="left", padx=40)
+    img_frame = ctk.CTkFrame(content_frame, fg_color="transparent", width=350, height=350)
+    img_frame.pack(side="left", padx=(0, 50))  # Reduced padding
+    # img_frame.pack_propagate(False)  # Prevent automatic resizing
 
     try:
-        placeholder_img = Image.open("checkerboard.png")
-        placeholder_img = placeholder_img.resize((350, 350), Image.Resampling.LANCZOS)
-        ctk_img = ctk.CTkImage(light_image=placeholder_img, dark_image=placeholder_img, size=(350, 350))
+        placeholder_img = Image.open(image)
+        placeholder_img = placeholder_img.resize((400, 400), Image.Resampling.LANCZOS)
+        ctk_img = ctk.CTkImage(light_image=placeholder_img, dark_image=placeholder_img, size=(400, 400))
         img_label = ctk.CTkLabel(img_frame, image=ctk_img, text="")
-        img_label.pack()
+        img_label.pack(expand=True)
     except FileNotFoundError:
         print("Image not found. Ensure 'checkerboard.png' exists.")
 
-    # Right - Survey Details
-    details_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-    details_frame.pack(side="left", padx=20)
+       # Right - Survey Details Frame
+    details_frame = ctk.CTkFrame(content_frame, fg_color="transparent", width=400)
+    details_frame.pack(side="left", padx=(50, 0), fill="y", expand=False)  # Expand only as needed
+    # Removed pack_propagate(False) so it resizes to fit contents
 
     # Title and Time
-    title_label = ctk.CTkLabel(details_frame, text="Survey 1", font=("Arial", 22, "bold"), text_color="#333333")
+    title_label = ctk.CTkLabel(details_frame, text=survey_title, font=("Arial", 22, "bold"), text_color="#333333")
     title_label.pack(anchor="w")
 
-    date_label = ctk.CTkLabel(details_frame, text="March 8, 2025 | 9:21PM", font=("Arial", 12, "italic"), text_color="#555555")
+    now = datetime.now()
+    formatted_date_time = now.strftime("%B %d, %Y | %I:%M %p")  # Format: Month Day, Year | Hour:Minute AM/PM
+
+    date_label = ctk.CTkLabel(details_frame, text=formatted_date_time, font=("Arial", 12, "italic"), text_color="#555555")
     date_label.pack(anchor="w")
 
     # Location
@@ -1610,21 +1768,29 @@ def surveyResult():
 
     location_label = ctk.CTkLabel(location_frame, text="Sorosoro, Batangas City", font=("Arial", 12), text_color="#333333")
     location_label.pack(side="left", padx=5)
+   
+    def edit_address():
+        new_address = address_dialog()
+        if new_address:  # Check if the user entered a new address
+            location_label.configure(text=new_address)  # Update the label with the new address
 
     edit_label = ctk.CTkLabel(location_frame, text="edit", font=("Arial", 10, "underline"), text_color="#555555", cursor="hand2")
     edit_label.pack(side="left")
+    edit_label.bind("<Button-1>", lambda e: edit_address())  
+
 
     # Description
     desc_label_frame = ctk.CTkFrame(details_frame, fg_color="transparent", width=350)
-    desc_label_frame.pack(anchor="w", pady=3, fill="x", expand=True)
+    desc_label_frame.pack(anchor="w", pady=3, fill="x")
 
     desc_label = ctk.CTkLabel(desc_label_frame, text="Description:", font=("Arial", 12, "bold"), text_color="#333333")
     desc_label.pack(side="left", pady=(10, 3))
     desc_edit_label = ctk.CTkLabel(desc_label_frame, text="edit", font=("Arial", 10, "underline"), text_color="#555555", cursor="hand2")
     desc_edit_label.pack(side="right", pady=3)
 
-    desc_textbox = ctk.CTkTextbox(details_frame, width=350, height=100, fg_color="white", border_color="#e5e5e5")
-    desc_textbox.pack()
+    desc_textbox = ctk.CTkTextbox(details_frame, width=350, height=100, fg_color="white", border_color="#e5e5e5", corner_radius=8)
+    desc_textbox.pack(pady=5, fill="x")
+    desc_textbox.insert("1.0", description)
 
     # Survey Metrics
     metrics = [
@@ -1633,7 +1799,6 @@ def surveyResult():
         ("Slope:", "N/A"),
         ("Elevation:", "N/A")
     ]
-
     for label_text, value in metrics:
         frame = ctk.CTkFrame(details_frame, fg_color="transparent")
         frame.pack(anchor="w", pady=2, fill="x")
@@ -1689,120 +1854,214 @@ def surveyResult():
                 folder_names = [doc.to_dict()["folder_name"] for doc in folder_docs]
 
                 if not folder_names:
-                    messagebox.showinfo("No Folders", "No folders found in your account.",parent=popup)
+                    messagebox.showinfo("No Folders", "No folders found in your account.", parent=popup)
                     return
 
-                # Show custom popup instead of simpledialog
+                # Show folder selection popup
                 selected = show_folder_selection_popup(survey_result_window, folder_names)
 
-                # If user cancels (X or Cancel button), do nothing
+                # If user cancels
                 if not selected:
                     return
 
                 if selected in folder_names:
-                    folder_path = os.path.join(SURVEY_DIR, selected)
-                    if not os.path.exists(folder_path):
-                        os.makedirs(folder_path)
-
-                    save_survey_details_to_folder(folder_path)
+                    # 🔥 Pass just the folder name (no path) when saving to Firestore
+                    save_survey_details_to_folder(selected)
                 else:
-                    messagebox.showwarning("Invalid", "Invalid folder name selected.",parent=popup)
+                    messagebox.showwarning("Invalid", "Invalid folder name selected.", parent=popup)
 
             except Exception as e:
-                messagebox.showerror("Error", str(e),parent=popup)
+                messagebox.showerror("Error", str(e), parent=popup)
+
         else:
             # User is not logged in — use local file dialog
-            folder_selected = filedialog.askdirectory(parent=survey_result_window,initialdir=SURVEY_DIR,title="Select an Existing Survey Folder")
+            folder_selected = filedialog.askdirectory(
+                parent=survey_result_window,
+                initialdir=SURVEY_DIR,
+                title="Select an Existing Survey Folder"
+            )
+
             if folder_selected:
                 save_survey_details_to_folder(folder_selected)
             else:
-                messagebox.showwarning("Warning", "No folder selected. Please select a folder.",parent=survey_result_window)
+                messagebox.showwarning("Warning", "No folder selected. Please select a folder.", parent=survey_result_window)
 
+
+
+
+        # Function to authenticate and get the Google Drive service
+    def authenticate_google_drive():
+        creds = None
+        SCOPES = ['https://www.googleapis.com/auth/drive']  # Scopes for file upload
+
+        # Check if token.pickle exists (token for user authentication)
+        if os.path.exists('token.pickle'):
+            with open('token.pickle', 'rb') as token:
+                creds = pickle.load(token)
+
+        # If no valid credentials are found, prompt the user to log in
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())  # Refresh the token
+            else:
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    'credentials.json', SCOPES)
+                creds = flow.run_local_server(port=0)
+
+            # Save the credentials for the next run
+            with open('token.pickle', 'wb') as token:
+                pickle.dump(creds, token)
+
+        # Build the Google Drive service
+        service = build('drive', 'v3', credentials=creds)
+        return service
+
+    def upload_image_to_drive(img_path, folder_id=None):
+        """Upload an image to Google Drive and return the file ID."""
+        # Authenticate and get the Google Drive service
+        service = authenticate_google_drive()
+
+        # Prepare the image for upload
+        file_metadata = {'name': os.path.basename(img_path)}  # Use the image file name as the file name
+        if folder_id:
+            file_metadata['parents'] = [folder_id]  # Optionally specify a folder in Google Drive
+
+        media = MediaFileUpload(img_path, mimetype='image/jpeg')  # You can change mimetype if the image is not jpeg
+
+        # Upload the image to Google Drive
+        file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+
+        # Make the file publicly accessible
+        file_id = file['id']
+        service.permissions().create(
+            fileId=file_id,
+            body={
+                'role': 'reader',  # Give read permissions
+                'type': 'anyone'   # Allow anyone to access it
+            }
+        ).execute()
+
+        print(f"File uploaded successfully. File ID: {file_id}")
+        # Return the file ID and the public link
+        global public_link
+        public_link = f"https://drive.google.com/uc?id={file_id}"
+        print(f"Public Link: {public_link}")
+        return file_id
 
     def save_to_new_survey_folder():
-    # Ask user to name the new survey folder
+        # Ask user to name the new survey folder
         folder_name = custom_input_dialog()
 
-        if folder_name:
-            new_folder_path = os.path.join(SURVEY_DIR, folder_name)
+        if not folder_name:
+            messagebox.showwarning("Cancelled", "Folder creation cancelled.", parent=survey_result_window)
+            return
 
-            # Check if the folder already exists
-            if os.path.exists(new_folder_path):
-                messagebox.showerror("Error", "A folder with this name already exists.",parent=survey_result_window)
-                return
+        # Get values from UI
+        date = date_label.cget("text").strip()
+        location = location_label.cget("text").strip()
+        description = desc_textbox.get("1.0", tk.END).strip()
 
-            try:
-                os.makedirs(new_folder_path)
+        if not date or not location or not description:
+            messagebox.showwarning("Warning", "Please ensure all fields are filled before saving.", parent=survey_result_window)
+            return
 
-                # Once folder is created, save survey just like your existing function
-                date = date_label.cget("text").strip()
-                location = location_label.cget("text").strip()
-                description = desc_textbox.get("1.0", tk.END).strip()
+        # Survey Metrics (static for now)
+        metrics = {
+            "Horizontal Distance": "N/A",
+            "Vertical Angle": "N/A",
+            "Slope": "N/A",
+            "Elevation": "N/A"
+        }
 
-                if not date or not location or not description:
-                    messagebox.showwarning("Warning", "Please ensure all fields are filled before saving.",parent=survey_result_window)
+        try:
+            if is_logged_in:
+                # 🖼️ Prompt user to select an image file (optional)
+                image_url = None
+                if image_path:
+                    # Upload image to Google Drive and get the file ID
+                    file_id = upload_image_to_drive(image_path)  # Upload to Google Drive
+
+                    if not file_id:
+                        messagebox.showwarning("Error", "Failed to upload image to Google Drive.", parent=survey_result_window)
+                        return
+
+                    # Construct the public URL for the uploaded image (optional)
+                    # image_url = f"https://drive.google.com/file/d/{file_id}/view?usp=sharing"
+
+                # 🔒 Save to Firestore
+                db.collection("survey_folders").add({
+                    "user_email": logged_in_email,
+                    "folder_name": folder_name,
+                    "timestamp": firestore.SERVER_TIMESTAMP
+                })
+
+                db.collection("surveys").add({
+                    "user_email": logged_in_email,
+                    "folder_name": folder_name,
+                    "date": date,
+                    "location": location,
+                    "description": description,
+                    "metrics": metrics,
+                    "image_drive_id": file_id,  # 🔗 Link to image uploaded on Google Drive
+                    "timestamp": firestore.SERVER_TIMESTAMP
+                })
+
+                messagebox.showinfo("Success", f"Survey details saved to the database under folder:\n{folder_name}.")
+
+            else:
+                # 📁 Save to local directory only (If not logged in)
+                new_folder_path = os.path.join(SURVEY_DIR, folder_name)
+
+                if os.path.exists(new_folder_path):
+                    messagebox.showerror("Error", "A folder with this name already exists.", parent=survey_result_window)
                     return
 
-                # Survey Metrics (you can make this dynamic later)
-                metrics = {
-                    "Horizontal Distance": "N/A",
-                    "Vertical Angle": "N/A",
-                    "Slope": "N/A",
-                    "Elevation": "N/A"
+                os.makedirs(new_folder_path)
+
+                # 🖼️ If image exists, copy it locally
+                image_path_local = None
+                if image_path:
+                    local_image_path = os.path.join(new_folder_path, os.path.basename(image_path))
+
+                    try:
+                        shutil.copy(image_path, local_image_path)
+                        image_path_local = local_image_path  # Store the local image path
+                        print(f"Image saved locally at: {local_image_path}")
+                    except Exception as e:
+                        messagebox.showerror("Error", f"Could not save image locally: {str(e)}", parent=survey_result_window)
+                        return
+
+                # Create survey metadata dictionary
+                survey_metadata = {
+                    "folder_name": folder_name,
+                    "date": date,
+                    "location": location,
+                    "description": description,
+                    "metrics": metrics,
+                    "image_path": image_path_local,  # Store the local image path
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 }
-
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                file_path = os.path.join(new_folder_path, f"survey_{timestamp}.txt")
+                pickle_file_name = f"survey_data_{timestamp}.pkl"  # Use a fixed name for the file
+                pickle_file_path = os.path.join(new_folder_path, pickle_file_name)  # Join with the folder path
+                with open(pickle_file_path, 'wb') as pickle_file:
+                    pickle.dump(survey_metadata, pickle_file)
 
-                # Ensure unique file name
-                counter = 1
-                while os.path.exists(file_path):
-                    file_path = os.path.join(new_folder_path, f"survey_{timestamp}_{counter}.txt")
-                    counter += 1
+                messagebox.showinfo("Success", f"Survey details saved locally in:\n{pickle_file_path}.")
 
-                # Save details to the file
-                with open(file_path, "w") as file:
-                    file.write(f"Date: {date}\n")
-                    file.write(f"Location: {location}\n")
-                    file.write(f"Description:\n{description}\n\n")
-                    file.write("Survey Metrics:\n")
-                    for key, value in metrics.items():
-                        file.write(f"- {key}: {value}\n")
-
-                # Check if the user is logged in
-                if is_logged_in:
-                    # Save to Firestore
-                    db.collection("surveys").add({
-                        "user_email": logged_in_email,
-                        "file_path": file_path,
-                        "folder_name": os.path.basename(new_folder_path),
-                        "date": date,
-                        "location": location,
-                        "description": description,
-                        "metrics": metrics,
-                        "timestamp": firestore.SERVER_TIMESTAMP
-                    })
-                    messagebox.showinfo("Success", f"Survey saved in new folder:\n{new_folder_path} and also in the database.")
-                else:
-                    messagebox.showinfo("Success", f"Survey saved locally in:\n{new_folder_path}.")
-                
-
-            except Exception as e:
-                messagebox.showerror("Error", f"Could not create/save to folder:\n{str(e)}",parent=survey_result_window)
-
-        else:
-            messagebox.showwarning("Cancelled", "Folder creation cancelled.",parent=survey_result_window)
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not save survey:\n{str(e)}", parent=survey_result_window)
 
 
 
 
     def save_survey_details_to_folder(folder_selected):
-    # Get values from the UI fields
+        # Get values from the UI fields
         date = date_label.cget("text").strip()
         location = location_label.cget("text").strip()
-        description = desc_textbox.get("1.0", tk.END).strip()  # Get text from Textbox
+        description = desc_textbox.get("1.0", tk.END).strip()
 
-        # Survey Metrics (static for now, can be dynamic if needed)
+        # Survey Metrics (static for now)
         metrics = {
             "Horizontal Distance": "N/A",
             "Vertical Angle": "N/A",
@@ -1812,60 +2071,95 @@ def surveyResult():
 
         # Ensure required fields are not empty
         if not date or not location or not description:
-            messagebox.showwarning("Warning", "Please ensure all fields are filled before saving.",parent=survey_result_window)
+            messagebox.showwarning("Warning", "Please ensure all fields are filled before saving.", parent=survey_result_window)
             return
 
         try:
-            # Generate a unique file name using timestamp
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            file_path = os.path.join(folder_selected, f"survey_{timestamp}.txt")
-
-            # Ensure no overwriting
-            counter = 1
-            while os.path.exists(file_path):
-                file_path = os.path.join(folder_selected, f"survey_{timestamp}_{counter}.txt")
-                counter += 1
-
-            # Save survey details to file
-            with open(file_path, "w") as file:
-                file.write(f"Date: {date}\n")
-                file.write(f"Location: {location}\n")
-                file.write(f"Description:\n{description}\n\n")
-                file.write("Survey Metrics:\n")
-                for key, value in metrics.items():
-                    file.write(f"- {key}: {value}\n")
-
-            # Save to Firestore if logged in
             if is_logged_in:
-                folder_name = os.path.basename(folder_selected)
+                # 🔒 Save to Firestore only
+                image_url = None
+                image_drive_id = None
+                if image_path:
+                    # Upload image to Google Drive and get the file ID
+                    image_drive_id = upload_image_to_drive(image_path)
 
-                # Optional: ensure folder exists in Firestore
-                folder_query = db.collection("folders").where("user_email", "==", logged_in_email).where("folder_name", "==", folder_name).get()
+                    if not image_drive_id:
+                        messagebox.showwarning("Error", "Failed to upload image to Google Drive.", parent=survey_result_window)
+                        return
+
+                folder_name = os.path.basename(folder_selected)  # This is just the name, not a path
+
+                # Check if folder exists in Firestore
+                folder_query = db.collection("survey_folders") \
+                    .where("user_email", "==", logged_in_email) \
+                    .where("folder_name", "==", folder_name).get()
+
                 if not folder_query:
-                    db.collection("folders").add({
+                    db.collection("survey_folders").add({
                         "user_email": logged_in_email,
                         "folder_name": folder_name,
                         "created_at": firestore.SERVER_TIMESTAMP
                     })
 
-                # Save survey entry
+                # Save the survey details to Firestore
                 db.collection("surveys").add({
                     "user_email": logged_in_email,
-                    "file_path": file_path,
                     "folder_name": folder_name,
                     "date": date,
                     "location": location,
                     "description": description,
                     "metrics": metrics,
+                    "image_drive_id": image_drive_id,  # Store the Google Drive file ID
                     "timestamp": firestore.SERVER_TIMESTAMP
                 })
 
-                messagebox.showinfo("Success", f"Survey saved in:\n{file_path}\n\nAlso synced to database.")
+                messagebox.showinfo("Success", "Survey details saved to the database.")
+
             else:
-                messagebox.showinfo("Success", f"Survey saved locally in:\n{file_path}")
+                # 📁 Save locally only
+                # Ensure the local folder exists
+                if not os.path.exists(folder_selected):
+                    os.makedirs(folder_selected)
+                    print(f"Created folder: {folder_selected}")
+
+                # If image exists, copy it locally
+                image_path_local = None
+                if image_path:
+                    local_image_path = os.path.join(folder_selected, os.path.basename(image_path))
+
+                    try:
+                        shutil.copy(image_path, local_image_path)
+                        image_path_local = local_image_path  # Store the local image path
+                        print(f"Image saved locally at: {local_image_path}")
+                    except Exception as e:
+                        messagebox.showerror("Error", f"Could not save image locally: {str(e)}", parent=survey_result_window)
+                        return
+
+                # Create survey metadata dictionary
+                survey_metadata = {
+                    "folder_name": folder_selected,
+                    "date": date,
+                    "location": location,
+                    "description": description,
+                    "metrics": metrics,
+                    "image_path": image_path_local,  # Store the local image path
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
+
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                pickle_file_name = f"survey_data_{timestamp}.pkl"  # Use a fixed name for the file
+                pickle_file_path = os.path.join(folder_selected, pickle_file_name)  # Join with the folder path
+
+                print(f"Saving survey metadata to: {pickle_file_path}")
+                with open(pickle_file_path, 'wb') as pickle_file:
+                    pickle.dump(survey_metadata, pickle_file)
+
+                messagebox.showinfo("Success", f"Survey details saved locally in:\n{pickle_file_path}")
 
         except Exception as e:
-            messagebox.showerror("Error", f"Could not save file:\n{str(e)}")
+            messagebox.showerror("Error", f"Could not save survey:\n{str(e)}", parent=survey_result_window)
+
+
 
     def popup_save():
         popup = ctk.CTkToplevel(tk_root)
